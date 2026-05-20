@@ -2,15 +2,15 @@
   <img src="video-claw-pics/banner.png" width="100%" />
 </p>
 
-<h2 align="center">
+<h1 align="center">
   Video-Claw: AI 创意视频生成员工
-</h2>
+</h1>
 
 <p align="center">
   <b>简体中文</b> | <a href="./README_EN.md">English</a>
 </p>
 
-<h4 align="center">
+<h3 align="center">
   <img src="https://img.shields.io/badge/Version-1.0.0-blue.svg" alt="Version">
   <a href="https://github.com/HITsz-TMG/VideoClaw/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/HITsz-TMG/VideoClaw?style=flat-square" alt="License">
@@ -25,7 +25,7 @@
   <a href="#openclaw-integration">
     <img src="https://img.shields.io/badge/OpenClaw-Compatible-ff4444?logo=data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCI+PHBhdGggZD0iTTEyIDJDNi40OCAyIDIgNi40OCAyIDEyczQuNDggMTAgMTAgMTAgMTAtNC40OCAxMC0xMFMxNy41MiAyIDEyIDJ6IiBmaWxsPSJ3aGl0ZSIvPjwvc3ZnPg==" alt="OpenClaw Compatible">
   </a>
-</h4>
+</h3>
 
 <p align="center">
   <b><i><font size="5">直接与 <a href="https://github.com/openclaw/openclaw">OpenClaw</a> 对话："生成 X 的视频" → 搞定。</font></i></b>
@@ -39,7 +39,7 @@
 
 </div>
 
-## 💥 News
+# 💥 News
 
 - `2026/3/27`: 🎬 AIGC-Claw 正式发布，支持从想法到视频生成全流程自动化，用户可随时介入调整。
 - `2026/4/6`: 🎭 AIGC-Claw 推出第二版，针对短剧进行优化。
@@ -49,7 +49,7 @@
 - `2026/5/13`: 🎞️ 文艺短视频接入 Pixelle-Video 的 HTML 模版。
 - `2026/5/14`: 🎉 AIGC-Claw 正式更名为 Video-Claw
 
-## 📖 项目介绍
+# 📖 项目介绍
 
 <p align="center">
   <img src="video-claw-pics/workflow.png" width="100%" />
@@ -61,10 +61,9 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 
 除主流程外，Video-Claw 也提供三个一次性 Pipeline，用于更轻量、更直接的视频生成任务：文艺短视频、动作迁移和数字人口播。Pipeline 任务会实时推送进度与产物，生成结果和历史记录会在本地保留，便于继续查看、删除和复用。
 
+# 📺 创作展示
 
-## 📺 创作展示
-
-### 🎬 VideoClaw
+## 🎬 VideoClaw
 
 | 阶段          | 示意图                                                                     | 说明                 |
 | ------------- | -------------------------------------------------------------------------- | -------------------- |
@@ -76,7 +75,7 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 | 视频生成      | `<img src="./video-claw-pics/workflow_demo/stage-5.png" width="600" />`  | 生成短片段与动作迁移 |
 | 后期剪辑      | `<img src="./video-claw-pics/workflow_demo/stage-6.png" width="600" />`  | 合成、配音与最终导出 |
 
-#### 🔊 微短剧：deepseek-v4 震撼发布
+### 🔊 微短剧：deepseek-v4 震撼发布
 
 使用 deepseek-v4 + gpt-image-2 + happy-horse-1.0 生成
 
@@ -97,7 +96,7 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 </table>
 </div>
 
-#### 📱 系列一：程序员被裁后利用 openclaw 收购原公司 (写实 短剧)
+### 📱 系列一：程序员被裁后利用 openclaw 收购原公司 (写实 短剧)
 
 > 共 8 集，跌宕起伏的逆袭之路（首次生成 6 集 + 续写 2 集）
 
@@ -158,7 +157,7 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 
 <br>
 
-#### 🖥️ 系列二：乡村教师 (科幻 漫剧)
+### 🖥️ 系列二：乡村教师 (科幻 漫剧)
 
 > 共 5 集，致敬伟大的文明传承
 
@@ -206,7 +205,7 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 
 <br>
 
-#### 🎞️ 更多演示
+### 🎞️ 更多演示
 
 <details>
 <summary>独立微短剧片段</summary>
@@ -244,6 +243,7 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 </details>
 
 
+
 <br>
 
 <details>
@@ -258,7 +258,7 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 </details>
 
 
-### 🧩 快速创作
+## 🧩 快速创作
 
 | Pipeline   | 示意图                                                                            | 前端入口             | 说明                                                                                                                                                                                                   |
 | ---------- | --------------------------------------------------------------------------------- | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -266,7 +266,7 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 | 动作迁移   | `<img src="./video-claw-pics/pipeline_demo/action_transfer.png" width="600" />` | 侧边栏「动作迁移」   | 输入参考图片、动作视频和提示词，调用支持动作迁移能力的视频模型生成结果视频。                                                                                                                           |
 | 数字人口播 | `<img src="./video-claw-pics/pipeline_demo/digital_human.png" width="600" />`   | 侧边栏「数字人口播」 | 输入人物图和口播文案，生成分句语音与数字人视频片段；多片段生成时会使用上一段尾帧衔接下一段，并用生成语音替换最终视频音轨。                                                                             |
 
-#### 文艺短视频
+### 文艺短视频
 
 <div align="center">
 <table align="center" border="0" cellspacing="0" cellpadding="0" style="border:none; border-collapse:collapse; margin:0 auto;">
@@ -283,7 +283,7 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 </table>
 </div>
 
-#### 动作迁移
+### 动作迁移
 
 <div align="center">
 <table align="center" border="0" cellspacing="0" cellpadding="0" style="border:none; border-collapse:collapse; margin:0 auto;">
@@ -304,9 +304,9 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 </table>
 </div>
 
-#### 数字人口播
+### 数字人口播
 
-## ✨ 功能特性
+# ✨ 功能特性
 
 | 能力                                     | 说明                                                                                                            |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -320,9 +320,9 @@ Video-Claw 是一个面向创意视频生产的 AI 导演系统。**你只需要
 
 ---
 
-## 🚀 快速开始
+# 🚀 快速开始
 
-### 方式一：一键安装（推荐）
+## 方式一：一键安装（推荐）
 
 **Linux / MacOS 安装**：
 
@@ -375,7 +375,7 @@ npm start
 AIGC_DIRECTOR_SKIP_FRONTEND_BUILD=1 ./install.sh
 ```
 
-### 方式二：手动安装
+## 方式二：手动安装
 
 ```bash
 # 1. 克隆项目
@@ -409,7 +409,7 @@ npm start
 
 如果没有安装 `uv`，也可以使用 `python -m venv venv` 与 `pip install -r requirements.txt` 安装后端依赖。
 
-### 方式三：OpenClaw 自动配置
+## 方式三：OpenClaw 自动配置
 
 向 OpenClaw 发送消息：
 
@@ -424,7 +424,7 @@ npm start
 用video-claw来生成一个视频，内容是"一条狗的使命"
 ```
 
-### 方式四：通过 ClawHub 安装
+## 方式四：通过 ClawHub 安装
 
 请确保本地安装了clawhub-cli
 
@@ -442,18 +442,18 @@ clawhub install video-claw
 
 ---
 
-## 🔧 配置说明
+# 🔧 配置说明
 
 <details>
 <summary><b>点击展开完整环境要求和变量</b></summary>
 
-### 环境要求
+## 环境要求
 
 - **Python**: 3.9+
 - **Node.js**: 18+
 - **npm**: 9+
 
-### 后端配置
+## 后端配置
 
 后端配置统一保存在 `video-claw/backend/config.yaml`，采用小写、层级化 YAML 结构。可直接编辑该文件，也可以在前端侧边栏底部进入「设置」页面修改。
 
@@ -461,7 +461,7 @@ clawhub install video-claw
 - `models` 保存**主流程**首页使用的默认模型。前端创建项目时会先读取这些默认值，再把具体模型参数传给后端；后端不会再为主流程自动兜底选择模型，缺少模型参数会直接报错。
 - Pipeline（文艺短视频、动作迁移、数字人口播）不使用这里的主流程默认模型，需要在对应 Pipeline 页面单独选择模型。
 
-### 前端设置页面
+## 前端设置页面
 
 启动前后端后，可以在 Web 前端左侧边栏底部进入「设置」页面，无需手动编辑 YAML，也可以完成常用配置：
 
@@ -519,7 +519,7 @@ models:
 
 `api_providers.common.proxy` 是唯一的代理地址。每个 provider 通过 `enable_proxy` 决定是否启用该代理，默认关闭，避免同一进程内不同模型调用互相污染。`server.host` / `server.port` 等服务启动参数保存后需要重启后端才会完全生效；API Key、代理配置和 `models` 中的主流程默认模型会被新的项目创建和模型调用读取。
 
-### 密钥与模型对应关系
+## 密钥与模型对应关系
 
 |          平台          | 配置字段                                                           | 常用用途                             |
 | :--------------------: | :----------------------------------------------------------------- | :----------------------------------- |
@@ -532,7 +532,7 @@ models:
 
 只需要填写你实际选择模型所需的平台密钥。例如主流程默认图像模型是 `doubao-seedream-*` 时，需要配置 `ark.api_key`；默认视频模型是 `wan*` 时，需要配置 `dashscope.api_key`。如果在 Pipeline 页面选择了不同模型，也要确保对应平台的密钥已经填写。
 
-### 可用模型
+## 可用模型
 
 |        类型        | 模型                                                                                                                                                                        |
 | :----------------: | :-------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -546,14 +546,14 @@ models:
 
 </details>
 
-## 产物说明
+# 产物说明
 
 Video-Claw 的所有任务元数据与生成产物均保存在 `video-claw/video-claw/backend/code/` 目录下。
 
 <details>
 <summary><b>点击展开存储结构与标识说明</b></summary>
 
-### 📁 存储结构
+## 📁 存储结构
 
 ```text
 video-claw/video-claw/backend/code/
@@ -578,20 +578,20 @@ video-claw/video-claw/backend/code/
     └── script/                 # AIGC-Claw 生成的剧本/分镜数据
 ```
 
-### 🆔 标识说明
+## 🆔 标识说明
 
 - **Task ID**: 格式为 `YYYYMMDD_HHMMSS_随机Hash` (例如 `20260514_204946_961f95d9`)，用于唯一标识一次 Pipeline 任务。
 - **Session ID**: 毫秒级时间戳 (如 `1778810088325`)，用于关联主流程交互中的上下文数据与生成图片。
 
 </details>
 
-## 🙏 致谢
+# 🙏 致谢
 
 Video-Claw 的想法和设计受到了 [AutoResearchClaw](https://github.com/aiming-lab/AutoResearchClaw)、[huobao-drama](https://github.com/chatfire-AI/huobao-drama)、[LibTV](https://www.liblib.tv/) 与 [libtv-skills](https://github.com/libtv-labs/libtv-skills) 的启发。
 
 [Pixelle-Video](https://github.com/AIDC-AI/Pixelle-Video)：Video-Claw 借鉴了文艺短视频、动作迁移、数字人口播三个 Pipeline，以及通过 HTML 模版精细控制图片、视频的文本。
 
-## 📚 系列工作
+# 📚 系列工作
 
 |                                                                      框架图                                                                      | 论文信息                                                                                                                                                                                                                                                                                                                                                                     |
 | :----------------------------------------------------------------------------------------------------------------------------------------------: | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

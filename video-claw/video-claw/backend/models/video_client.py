@@ -225,6 +225,9 @@ class VideoClient:
         audio: Optional[bool],
     ) -> str:
         """通过万象模型生成视频"""
+        # 设置 Wan 和 Happyhorse 系列视频生成的默认分辨率为 720P
+        resolution = resolution or "720P"
+        
         logger.info("VideoClient routed to Wan: model=%s", model)
         return self.Dashscope_client.generate_video(
             prompt=prompt,

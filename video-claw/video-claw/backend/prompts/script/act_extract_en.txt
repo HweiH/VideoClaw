@@ -8,9 +8,17 @@ You are a professional script analyst. You need to accurately split the entire c
 
 ---
 
+[Target Episode Count]
+
+{episodes}
+
+---
+
 [Splitting Requirements]
 
 1. Group the script content into the corresponding `episode_number`.
+   - You must return exactly {episodes} array elements.
+   - `episode_number` must be consecutive from 1 to {episodes}; do not omit episodes and do not merge multiple episodes.
 2. For `act_title`, summarize a concise and engaging title of no more than 10 words based on the story of the episode.
 3. For `content`, preserve the full script text of the episode (including scene descriptions, action directions, and character dialogue).
 

@@ -131,6 +131,54 @@ class ScriptWriterAgent(AgentInterface):
             for item in stats
         )
 
+    @staticmethod
+    def _expected_episode_numbers(episodes: int) -> List[int]:
+        return list(range(1, max(1, int(episodes)) + 1))
+
+    @classmethod
+    def _episode_numbers_from_script(cls, script_text: str) -> List[int]:
+        return [
+            int(block["episode_number"])
+            for block in cls._split_episode_blocks(script_text)
+            if block.get("lines")
+        ]
+
+    @classmethod
+    def _episode_count_feedback(cls, script_text: str, episodes: int) -> str:
+        expected = cls._expected_episode_numbers(episodes)
+        found = cls._episode_numbers_from_script(script_text)
+        missing = [num for num in expected if num not in found]
+        extra = [num for num in found if num not in expected]
+        return (
+            f"目标集数：{episodes}；应包含集号：{expected}；"
+            f"当前识别到集号：{found or '无'}；缺失：{missing or '无'}；多余：{extra or '无'}。"
+        )
+
+    @classmethod
+    def _episode_count_matches(cls, script_text: str, episodes: int) -> bool:
+        found = sorted(set(cls._episode_numbers_from_script(script_text)))
+        return found == cls._expected_episode_numbers(episodes)
+
+    @classmethod
+    def _build_episodes_from_script_text(cls, script_text: str, expected_episodes: int) -> List[dict]:
+        episodes: List[dict] = []
+        for block in cls._split_episode_blocks(script_text):
+            ep_no = int(block.get("episode_number") or len(episodes) + 1)
+            if ep_no < 1 or ep_no > expected_episodes:
+                continue
+            content = "\n".join(block.get("lines") or []).strip()
+            if not content:
+                continue
+            episodes.append({
+                "episode_number": ep_no,
+                "act_title": f"第{ep_no}集",
+                "content": content,
+            })
+        deduped: Dict[int, dict] = {}
+        for ep in episodes:
+            deduped[ep["episode_number"]] = ep
+        return [deduped[num] for num in cls._expected_episode_numbers(expected_episodes) if num in deduped]
+
     async def process(self, input_data: Any, intervention: Optional[Dict] = None) -> Dict:
         if intervention and "modified_script" in intervention:
             modified = intervention["modified_script"]
@@ -368,6 +416,30 @@ class ScriptWriterAgent(AgentInterface):
                     logger.info("[ScriptWriter] Trimmed %s script generated (%d chars)", phase, len(trimmed))
                 return trimmed
 
+            async def _repair_episode_count_if_needed(script_text: str, phase: str) -> str:
+                repaired = script_text
+                for attempt in range(2):
+                    if self._episode_count_matches(repaired, episodes):
+                        return repaired
+                    feedback = self._episode_count_feedback(repaired, episodes)
+                    logger.warning(
+                        "[ScriptWriter] %s script episode count mismatch; repair attempt=%d %s",
+                        phase,
+                        attempt + 1,
+                        feedback,
+                    )
+                    _log_progress(14 if phase == "初稿" else 48, f"{phase}集数不一致，正在修正为{episodes}集...")
+                    repair_prompt = _get_script_prompt("repair_episode_count", "zh" if is_zh else "en").format(
+                        script_text=repaired,
+                        episodes=episodes,
+                        episode_report=feedback,
+                        min_lines=self.MIN_EPISODE_LINES,
+                        max_lines=self.MAX_EPISODE_LINES,
+                    )
+                    repaired = await loop.run_in_executor(None, self._cancellable_query, llm, repair_prompt, [], llm_model, True, sid, web_search)
+                    repaired = await _trim_script_if_needed(repaired, f"{phase}集数修复后")
+                return repaired
+
             # 1. Generate full script
             _log_progress(10, "正在生成完整剧本文本初稿...")
             prompt = _get_script_prompt("generate_script", "zh" if is_zh else "en").format(idea=idea, style=style, episodes=episodes)
@@ -375,6 +447,7 @@ class ScriptWriterAgent(AgentInterface):
             full_script_text = await loop.run_in_executor(None, self._cancellable_query, llm, prompt, [], llm_model, True, sid, web_search)
             logger.info(f"[ScriptWriter] Initial script generated ({len(full_script_text)} chars)")
             full_script_text = await _trim_script_if_needed(full_script_text, "初稿")
+            full_script_text = await _repair_episode_count_if_needed(full_script_text, "初稿")
             
             _log_progress(20, "正在进行台词评估...")
             eval_dialogue_prompt = _get_script_prompt("eval_dialogue", "zh" if is_zh else "en").format(script_text=full_script_text)
@@ -393,6 +466,7 @@ class ScriptWriterAgent(AgentInterface):
             full_script_text = await loop.run_in_executor(None, self._cancellable_query, llm, revise_prompt, [], llm_model, True, sid, web_search)
             logger.info(f"[ScriptWriter] Final script generated ({len(full_script_text)} chars)")
             full_script_text = await _trim_script_if_needed(full_script_text, "优化后")
+            full_script_text = await _repair_episode_count_if_needed(full_script_text, "优化后")
 
             _log_progress(60, "最终剧本生成完成，正在提取人物/场景信息...")
 
@@ -416,7 +490,8 @@ class ScriptWriterAgent(AgentInterface):
             _log_progress(80, "开始结构化全集数据...")
             
             extract_prompt = _get_script_prompt("act_extract", "zh" if is_zh else "en").format(
-                script_text=full_script_text
+                script_text=full_script_text,
+                episodes=episodes,
             )
             
             raw_acts = await loop.run_in_executor(None, self._cancellable_query, llm, extract_prompt, [], llm_model, True, sid, web_search)
@@ -434,6 +509,28 @@ class ScriptWriterAgent(AgentInterface):
 
             if not all_episodes:
                 logger.error(f"[ScriptWriter] Failed to parse episodes from LLM output. Raw: {raw_acts[:200]}...")
+            expected_numbers = self._expected_episode_numbers(episodes)
+            parsed_numbers = sorted({
+                int(ep.get("episode_number"))
+                for ep in all_episodes
+                if isinstance(ep.get("episode_number"), int) or str(ep.get("episode_number", "")).isdigit()
+            })
+            if parsed_numbers != expected_numbers:
+                logger.warning(
+                    "[ScriptWriter] Structured episodes mismatch; expected=%s parsed=%s. Falling back to regex split.",
+                    expected_numbers,
+                    parsed_numbers,
+                )
+                fallback_episodes = self._build_episodes_from_script_text(full_script_text, episodes)
+                fallback_numbers = [ep["episode_number"] for ep in fallback_episodes]
+                if fallback_numbers == expected_numbers:
+                    all_episodes = fallback_episodes
+                else:
+                    logger.error(
+                        "[ScriptWriter] Regex split still mismatched; expected=%s fallback=%s. Keeping parsed output.",
+                        expected_numbers,
+                        fallback_numbers,
+                    )
             
             final_json = {
                 "project_id": f"proj_{sid}",

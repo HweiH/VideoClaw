@@ -16,7 +16,7 @@ interface AssetVersion {
   description: string;
   selected: string;       // 当前选中的文件路径
   versions: string[];     // 所有历史版本路径
-  status?: 'pending' | 'done' | 'failed';  // 生成状态
+  status?: 'pending' | 'done' | 'failed' | 'running';  // 生成状态
 }
 
 /* ─── 水平滚动图片画廊 ─── */
@@ -87,7 +87,7 @@ function ImageGallery({
                 <img
                   src={assetUrl(path)}
                   alt={`v${i + 1}`}
-                  className="h-28 w-auto object-cover"
+                  className="h-32 w-auto object-cover"
                   onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
                 />
                 <button
@@ -107,7 +107,7 @@ function ImageGallery({
           );
         })}
         {showPlaceholder && (
-          <div className="flex-shrink-0 flex items-center justify-center h-28 aspect-video bg-gray-50 rounded-lg border border-dashed border-gray-200">
+          <div className="flex-shrink-0 flex items-center justify-center h-32 aspect-video bg-gray-50 rounded-lg border border-dashed border-gray-200">
             <div className="flex items-center gap-2 text-gray-400 text-xs">
               <Loader className="w-4 h-4 animate-spin" />
               <span>生成中...</span>
@@ -158,10 +158,12 @@ function AssetRow({
   isRegenerating?: boolean;
   isUploading?: boolean;
 }) {
-  const isPending = asset.status === 'pending' || isRegenerating;
+  const isRunning = asset.status === 'running' || isRegenerating;
+  const isPending = asset.status === 'pending';
   const isFailed = asset.status === 'failed' && !isRegenerating;
   const hasImage = Boolean(asset.selected) || asset.versions.length > 0;
-  const canGenerateMissing = !hasImage && !isPending && !isRegenerating;
+  const canGenerateMissing = !hasImage && !isPending && !isRunning;
+  const canShowRegenerate = !isRunning && !isPending && (hasImage || isFailed || canGenerateMissing);
 
   return (
     <div className={`flex flex-col xl:flex-row border rounded-xl overflow-hidden bg-white ${
@@ -175,9 +177,10 @@ function AssetRow({
             : <MapPin className="w-3.5 h-3.5 text-emerald-500" />
           }
           <span className="text-sm font-semibold text-gray-800 truncate">{asset.name}</span>
-          {isPending && (
+          {(isPending || isRunning) && (
             <span className="inline-flex items-center gap-1 text-[10px] bg-amber-50 text-amber-600 px-1.5 py-0.5 rounded">
-              <Loader className="w-2.5 h-2.5 animate-spin" />生成中
+              {isRunning && <Loader className="w-2.5 h-2.5 animate-spin" />}
+              {isRunning ? '生成中' : '等待中'}
             </span>
           )}
           {isFailed && (
@@ -221,31 +224,27 @@ function AssetRow({
             <p className="text-xs text-gray-600 leading-relaxed">{asset.description}</p>
           </div>
         )}
-        {/* 已有图片显示重新生成；失败/旧数据空资源允许补生成。 */}
-        {!isStageRunning && (hasImage || isFailed || canGenerateMissing) && (
-          <button
-            onClick={onRegenerate}
-            disabled={isRegenerating}
-            className={`mt-3 flex items-center gap-1.5 self-start px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-              isRegenerating
-                ? 'text-gray-400 bg-gray-100 cursor-not-allowed'
-                : isFailed
-                ? 'text-red-600 bg-red-50 hover:bg-red-100'
-                : 'text-violet-600 bg-violet-50 hover:bg-violet-100'
-            }`}
-          >
-            <RefreshCw className={`w-3 h-3 ${isRegenerating ? 'animate-spin' : ''}`} />
-            {isRegenerating ? '生成中...' : isFailed ? '点击重试' : hasImage ? '重新生成' : '生成'}
-          </button>
-        )}
-        {!isStageRunning && (
-          <label className={`mt-2 ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {canShowRegenerate && (
+            <button
+              onClick={onRegenerate}
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                isFailed
+                  ? 'text-red-600 bg-red-50 hover:bg-red-100'
+                  : 'text-violet-600 bg-violet-50 hover:bg-violet-100'
+              }`}
+            >
+              <RefreshCw className="w-3 h-3" />
+              {isFailed ? '点击重试' : hasImage ? '重新生成' : '生成'}
+            </button>
+          )}
+          <label className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${
             isUploading
               ? 'text-gray-400 bg-gray-100 cursor-wait'
               : 'text-gray-600 bg-gray-100 hover:bg-gray-200 cursor-pointer'
           }`}>
             {isUploading ? <Loader className="w-3 h-3 animate-spin" /> : <Upload className="w-3 h-3" />}
-            {isUploading ? '上传中...' : '上传图片'}
+            {isUploading ? '上传中...' : '上传照片'}
             <input
               type="file"
               accept="image/*"
@@ -258,26 +257,26 @@ function AssetRow({
               }}
             />
           </label>
-        )}
+        </div>
       </div>
 
       {/* 右侧: 图片画廊 / 占位 */}
       <div className="flex-1 min-w-0 p-3 flex items-center">
         {isPending && !hasImage ? (
-          <div className="flex items-center justify-center h-28 aspect-video bg-gray-50 rounded-lg border border-dashed border-gray-200">
+          <div className="flex items-center justify-center h-32 aspect-video bg-gray-50 rounded-lg border border-dashed border-gray-200">
             <div className="flex items-center gap-2 text-gray-400 text-xs">
               <Loader className="w-4 h-4 animate-spin" />
               <span>正在生成...</span>
             </div>
           </div>
         ) : !hasImage ? (
-          <div className="flex items-center justify-center h-28 aspect-video bg-gray-50/60 rounded-lg border border-dashed border-gray-200">
+          <div className="flex items-center justify-center h-32 aspect-video bg-gray-50/60 rounded-lg border border-dashed border-gray-200">
             <div className="flex flex-col items-center gap-1 text-gray-400 text-xs">
               {isFailed ? (
                 <>
               <AlertCircle className="w-4 h-4" />
                   <span>生成失败</span>
-                  {!isStageRunning && (
+                  {!isRunning && (
                     <button
                       onClick={onRegenerate}
                       disabled={isRegenerating}
@@ -292,7 +291,7 @@ function AssetRow({
                 <>
                   <ImagePlus className="w-4 h-4" />
                   <span>暂无图片</span>
-                  {!isStageRunning && canGenerateMissing && (
+                  {canGenerateMissing && (
                     <button
                       onClick={onRegenerate}
                       disabled={isRegenerating}
@@ -312,7 +311,7 @@ function AssetRow({
               versions={asset.versions}
               selected={asset.selected}
               onSelect={onSelectVersion}
-              showPlaceholder={isRegenerating}
+              showPlaceholder={isRunning}
             />
             {isFailed && (
               <button

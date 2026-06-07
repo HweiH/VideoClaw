@@ -312,7 +312,7 @@ function ClipRow({
               versions={clip.versions}
               selected={clip.selected}
               onSelect={onSelectVersion}
-              showPlaceholder={isRegenerating}
+              showPlaceholder={isRunning}
             />
             {isFailed && (
               <button

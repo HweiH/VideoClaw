@@ -1,5 +1,4 @@
 import asyncio
-import copy
 import json
 import queue
 import threading
@@ -18,35 +17,6 @@ STAGE_NAME_MAP = {
     "video_generation": "视频生成",
     "post_production": "后期剪辑",
 }
-
-
-def inject_user_selections(state, stage: str, data: dict):
-    """Inject persisted user choices into downstream stage input."""
-    if stage == 'video_generation' and 'selected_images' not in data:
-        ref_art = state.artifacts.get('reference_generation', {})
-        if isinstance(ref_art, dict):
-            scenes = ref_art.get('scenes', [])
-            selected_images = {s['id']: s['selected'] for s in scenes
-                              if isinstance(s, dict) and s.get('id') and s.get('selected')}
-            if selected_images:
-                data['selected_images'] = selected_images
-
-    if stage == 'video_generation' and 'clips' not in data:
-        vid_art = state.artifacts.get('video_generation', {})
-        if isinstance(vid_art, dict):
-            clips = vid_art.get('clips', [])
-            if clips:
-                data['clips'] = clips
-
-    if stage == 'post_production' and 'selected_clips' not in data:
-        vid_art = state.artifacts.get('video_generation', {})
-        if isinstance(vid_art, dict):
-            clips = vid_art.get('clips', [])
-            selected_clips = {c['id']: c['selected'] for c in clips
-                             if isinstance(c, dict) and c.get('id') and c.get('selected')}
-            if selected_clips:
-                data['selected_clips'] = selected_clips
-
 
 
 def build_openclaw_message(stage: str, result: Dict[str, Any]) -> str:
@@ -143,9 +113,7 @@ async def stream_workflow_task(
                 break
 
         result = task.result()
-        workflow_engine.save_session_to_disk(state.session_id)
-        with workflow_engine._state_lock:
-            status_snapshot = copy.deepcopy(state.status)
+        status_snapshot = workflow_engine.persist_session_snapshot(state.session_id)
 
         payload = {
             "type": "stage_complete",
@@ -160,7 +128,7 @@ async def stream_workflow_task(
 
     except Exception as e:
         try:
-            workflow_engine.save_session_to_disk(state.session_id)
+            workflow_engine.persist_session_snapshot(state.session_id)
         except Exception:
             pass
         yield json.dumps({"type": "error", "content": str(e)}) + "\n"

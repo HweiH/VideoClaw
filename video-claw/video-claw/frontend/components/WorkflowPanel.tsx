@@ -72,6 +72,14 @@ function hasDoneArtifactItems(artifact: any): boolean {
   });
 }
 
+function hasRunningArtifactItems(artifact: any): boolean {
+  if (!artifact) return false;
+  return ['clips', 'images', 'scenes', 'characters', 'settings'].some(key => {
+    const items = artifact?.[key];
+    return Array.isArray(items) && items.some((item: any) => item?.status === 'running');
+  });
+}
+
 function getStageProgressSnapshot(status: any, stageId: string): Partial<StageState> {
   const snapshot = status?.stage_progress?.[stageId];
   if (!snapshot || typeof snapshot !== 'object') return {};
@@ -106,20 +114,20 @@ export default function WorkflowPanel() {
 
   const abortRef = useRef<AbortController | null>(null);
   const stoppedRef = useRef(false);
-  const pollRef = useRef<string | null>(null);
+  const pollRef = useRef<Set<string>>(new Set());
 
   // 清理轮询
   useEffect(() => {
-    return () => { pollRef.current = null; };
+    return () => { pollRef.current.clear(); };
   }, []);
 
   // 轮询等待后端阶段完成。运行中优先读后端内存，后端重启后再回退到磁盘快照。
   const pollForCompletion = useCallback(async (sid: string, stageId: string) => {
     const key = `${sid}:${stageId}`;
-    pollRef.current = key;
+    pollRef.current.add(key);
     for (let i = 0; i < 300; i++) {  // 增加轮询次数（最多10分钟）
       await new Promise(r => setTimeout(r, 2000));
-      if (pollRef.current !== key) return;
+      if (!pollRef.current.has(key)) return;
       try {
         let status: any;
         try {
@@ -127,11 +135,14 @@ export default function WorkflowPanel() {
         } catch {
           status = await getProjectStatusFromDisk(sid);
         }
-        if (pollRef.current !== key) return;
+        if (!pollRef.current.has(key)) return;
         setGlobalStatusMap(status.status || {});
         const done = Object.keys(status.status || {}).filter(k => ["completed", "session_completed"].includes(status.status[k]));
         const currentStageStatus = status.status?.[stageId] || 'idle';
-        if (done.includes(stageId)) {
+        const artifacts = status.artifacts || {};
+        const currentArtifact = artifacts[stageId];
+        const hasRunningItems = hasRunningArtifactItems(currentArtifact);
+        if (done.includes(stageId) && !hasRunningItems) {
           const isWait = currentStageStatus === 'waiting' && status.current_stage === stageId;
           let artifact = null;
           try { artifact = (await getArtifact(sid, stageId)).artifact; } catch {}
@@ -141,35 +152,43 @@ export default function WorkflowPanel() {
             progressMessage: isWait ? '等待确认' : '已完成',
             artifact,
           });
-          pollRef.current = null;
+          pollRef.current.delete(key);
           return;
         }
-        if (currentStageStatus === 'error') {
+        if (currentStageStatus === 'error' && !hasRunningItems) {
           updateStageState(stageId, {
             status: 'error',
             error: status.error || '执行出错',
             progressMessage: '执行失败',
           });
-          pollRef.current = null;
+          pollRef.current.delete(key);
           return;
         }
-        if (currentStageStatus === 'stopped') {
+        if (currentStageStatus === 'stopped' && !hasRunningItems) {
           updateStageState(stageId, {
             status: 'stopped',
             error: '手动停止',
             progressMessage: '已停止',
           });
-          pollRef.current = null;
+          pollRef.current.delete(key);
           return;
         }
-        // 如果当前阶段不再是 running，提前停止轮询（比如变成了 waiting_intervention 或已完成）
-        if (currentStageStatus !== 'running') {
-          pollRef.current = null;
+        // 后台单卡重生成时，阶段状态可能仍是 waiting/completed；只要 item 还在 running 就继续轮询。
+        if (currentStageStatus !== 'running' && !hasRunningItems) {
+          updateStageState(stageId, {
+            status: currentStageStatus === 'waiting'
+              ? 'waiting'
+              : (done.includes(stageId) ? 'completed' : 'pending'),
+            progress: done.includes(stageId) ? 100 : undefined,
+            progressMessage: currentStageStatus === 'waiting'
+              ? '等待确认'
+              : (done.includes(stageId) ? '已完成' : undefined),
+            artifact: currentArtifact || null,
+          });
+          pollRef.current.delete(key);
           return;
         }
         // 更新进度信息（优先使用后端持久化的 stage_progress 快照）
-        const artifacts = status.artifacts || {};
-        const currentArtifact = artifacts[stageId];
         const update: Partial<StageState> = {
           status: 'running',
           ...getStageProgressSnapshot(status, stageId),
@@ -201,6 +220,7 @@ export default function WorkflowPanel() {
         }
       } catch { /* retry */ }
     }
+    pollRef.current.delete(key);
   }, []);
 
   // 检查 URL 参数，加载指定的 session 和阶段
@@ -1123,9 +1143,11 @@ export default function WorkflowPanel() {
       setActiveStage(finalStage);
       setStageStates(newStates);
 
-      // 轮询当前正在执行的阶段（仅当该阶段有 artifact 数据时）
-      if (currentStage && stMap[currentStage] === 'running') {
-        pollForCompletion(sid, currentStage);
+      // 轮询正在执行的阶段；后台单卡重生成时阶段可能不是 running，但 item 会是 running。
+      for (const stageId of STAGE_ORDER) {
+        if (stMap[stageId] === 'running' || hasRunningArtifactItems(status.artifacts?.[stageId])) {
+          pollForCompletion(sid, stageId);
+        }
       }
     } catch {
       setActiveStage(STAGE_ORDER[0]);

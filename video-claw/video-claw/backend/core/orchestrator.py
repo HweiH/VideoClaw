@@ -216,6 +216,131 @@ class WorkflowEngine:
                 self._stop_events[session_id] = threading.Event()
             return self._stop_events[session_id]
 
+    def create_session(self, session_id: str, meta: Dict[str, Any]) -> Dict[str, Any]:
+        """Create or initialize a workflow session through the engine-owned state."""
+        with self._state_lock:
+            state = self.get_or_create_state(session_id)
+            state.started_at = datetime.now()
+            if not isinstance(state.status, dict):
+                state.status = {}
+            state.status[state.current_stage.value] = "completed"
+            state.meta = copy.deepcopy(meta)
+            state.updated_at = datetime.now()
+            self.save_session_to_disk(session_id, meta)
+            return {
+                "session_id": session_id,
+                "status": copy.deepcopy(state.status),
+                "meta": copy.deepcopy(state.meta),
+            }
+
+    def get_status_snapshot(self, session_id: str) -> Optional[Dict[str, Any]]:
+        """Return a deep-copied session snapshot from the unified in-memory state."""
+        with self._state_lock:
+            state = self.get_state(session_id)
+            return state.to_dict() if state else None
+
+    def get_artifact_snapshot(self, session_id: str, stage: str) -> Optional[Any]:
+        """Return a deep-copied artifact snapshot from the unified in-memory state."""
+        with self._state_lock:
+            state = self.get_state(session_id)
+            if not state:
+                raise KeyError(f"Session not found: {session_id}")
+            artifact = state.artifacts.get(stage)
+            return copy.deepcopy(artifact) if artifact is not None else None
+
+    def update_session_meta(self, session_id: str, updates: Dict[str, Any], allowed_keys: tuple[str, ...]) -> Dict[str, Any]:
+        """Update session-level generation settings through the engine-owned meta store."""
+        with self._state_lock:
+            state = self.get_state(session_id)
+            if not state:
+                raise KeyError(f"Session not found: {session_id}")
+            if not state.meta:
+                state.meta = {}
+            for key in allowed_keys:
+                if key in updates:
+                    state.meta[key] = updates[key]
+            state.updated_at = datetime.now()
+            self.save_session_to_disk(session_id)
+            return {"status": "ok", "meta": copy.deepcopy(state.meta)}
+
+    def prepare_stage_execution(self, session_id: str, stage: str, body: Dict[str, Any]) -> tuple[WorkflowState, Dict[str, Any]]:
+        """Build stage input from current meta/artifacts without exposing mutable state to routers."""
+        with self._state_lock:
+            state = self.get_or_create_state(session_id)
+            input_data = copy.deepcopy(body) if isinstance(body, dict) else {}
+            input_data["session_id"] = session_id
+
+            for key, value in copy.deepcopy(state.meta).items():
+                if value is not None and (key not in input_data or not input_data[key]):
+                    input_data[key] = value
+            self._inject_user_selections(copy.deepcopy(state.artifacts), stage, input_data)
+            return state, input_data
+
+    def prepare_intervention_execution(
+        self,
+        session_id: str,
+        stage: str,
+        modifications: Dict[str, Any],
+    ) -> tuple[WorkflowState, Dict[str, Any]]:
+        """Build intervention input from the latest artifact/meta snapshot."""
+        with self._state_lock:
+            state = self.get_state(session_id)
+            if not state:
+                raise KeyError(f"Session not found: {session_id}")
+
+            current_artifact = copy.deepcopy(state.artifacts.get(stage, {}))
+            input_data = current_artifact if isinstance(current_artifact, dict) else {}
+            input_data["session_id"] = session_id
+            for key, value in copy.deepcopy(state.meta).items():
+                if value is not None and key not in input_data:
+                    input_data[key] = value
+            self._inject_user_selections(copy.deepcopy(state.artifacts), stage, input_data)
+            input_data.update(modifications or {})
+            return state, input_data
+
+    @staticmethod
+    def _inject_user_selections(artifacts: Dict[str, Any], stage: str, data: Dict[str, Any]):
+        """Inject persisted user choices into downstream stage input."""
+        if stage == 'video_generation' and 'selected_images' not in data:
+            ref_art = artifacts.get('reference_generation', {})
+            if isinstance(ref_art, dict):
+                scenes = ref_art.get('scenes', [])
+                selected_images = {
+                    s['id']: s['selected']
+                    for s in scenes
+                    if isinstance(s, dict) and s.get('id') and s.get('selected')
+                }
+                if selected_images:
+                    data['selected_images'] = selected_images
+
+        if stage == 'video_generation' and 'clips' not in data:
+            vid_art = artifacts.get('video_generation', {})
+            if isinstance(vid_art, dict):
+                clips = vid_art.get('clips', [])
+                if clips:
+                    data['clips'] = clips
+
+        if stage == 'post_production' and 'selected_clips' not in data:
+            vid_art = artifacts.get('video_generation', {})
+            if isinstance(vid_art, dict):
+                clips = vid_art.get('clips', [])
+                selected_clips = {
+                    c['id']: c['selected']
+                    for c in clips
+                    if isinstance(c, dict) and c.get('id') and c.get('selected')
+                }
+                if selected_clips:
+                    data['selected_clips'] = selected_clips
+
+    def persist_session_snapshot(self, session_id: str) -> Dict[str, Any]:
+        """Persist the latest engine-owned state and return a status snapshot."""
+        with self._state_lock:
+            state = self.get_state(session_id)
+            if not state:
+                raise KeyError(f"Session not found: {session_id}")
+            self.save_session_to_disk(session_id)
+            return copy.deepcopy(state.status)
+
     def stop_session(self, session_id: str):
         self.get_stop_event(session_id).set()
         with self._state_lock:
@@ -1319,6 +1444,127 @@ class WorkflowEngine:
 
         logger.info(f"Session and results deleted: {session_id}")
         return True
+
+    def cleanup_orphan_results(self) -> Dict[str, Any]:
+        """Remove result files whose session no longer exists."""
+        from config import settings
+
+        with self._state_lock:
+            session_ids = set(self.sessions.keys())
+            if os.path.isdir(self._session_dir):
+                for filename in os.listdir(self._session_dir):
+                    if filename.endswith('.json'):
+                        session_ids.add(filename[:-5])
+
+            cleaned = {"scripts": [], "images": [], "videos": []}
+            result_base = settings.RESULT_DIR
+
+            script_dir = os.path.join(result_base, 'script')
+            if os.path.isdir(script_dir):
+                for filename in os.listdir(script_dir):
+                    if not filename.endswith('.json'):
+                        continue
+                    sid = filename[:-5]
+                    if sid not in session_ids:
+                        os.remove(os.path.join(script_dir, filename))
+                        cleaned["scripts"].append(sid)
+
+            image_dir = os.path.join(result_base, 'image')
+            if os.path.isdir(image_dir):
+                for dirname in os.listdir(image_dir):
+                    if dirname != 'test_avail' and dirname not in session_ids:
+                        shutil.rmtree(os.path.join(image_dir, dirname))
+                        cleaned["images"].append(dirname)
+
+            video_dir = os.path.join(result_base, 'video')
+            if os.path.isdir(video_dir):
+                for dirname in os.listdir(video_dir):
+                    if dirname != 'test_avail' and dirname not in session_ids:
+                        shutil.rmtree(os.path.join(video_dir, dirname))
+                        cleaned["videos"].append(dirname)
+
+            return {"status": "cleaned", "cleaned": cleaned}
+
+    def get_scene_asset_counts(self, session_id: str, scene_number: int) -> Dict[str, Any]:
+        """Count generated reference images/videos from the current artifact state only."""
+        from config import settings
+
+        with self._state_lock:
+            state = self.get_state(session_id)
+            if not state:
+                raise KeyError(f"Session not found: {session_id}")
+            artifacts = copy.deepcopy(state.artifacts)
+
+        storyboard = artifacts.get('storyboard', {})
+        segment_ids = self._segment_ids_for_scene(storyboard, scene_number)
+
+        ref_artifact = artifacts.get('reference_generation', {})
+        ref_scenes = ref_artifact.get('scenes', []) if isinstance(ref_artifact, dict) else []
+        ref_image_count = self._count_existing_assets(ref_scenes, segment_ids, settings.CODE_DIR, include_versions=True)
+
+        video_artifact = artifacts.get('video_generation', {})
+        video_clips = video_artifact.get('clips', []) if isinstance(video_artifact, dict) else []
+        video_count = self._count_existing_assets(video_clips, segment_ids, settings.CODE_DIR, include_versions=False)
+
+        return {
+            "scene_number": scene_number,
+            "reference_images": ref_image_count,
+            "videos": video_count,
+            "shot_count": len(segment_ids),
+        }
+
+    @staticmethod
+    def _segment_ids_for_scene(storyboard: Any, scene_number: int) -> List[str]:
+        if not isinstance(storyboard, dict):
+            return []
+
+        ids: List[str] = []
+        for shot in storyboard.get('shots', []):
+            if isinstance(shot, dict) and shot.get('scene_number') == scene_number and shot.get('shot_id'):
+                ids.append(shot['shot_id'])
+
+        for episode in storyboard.get('episodes', []):
+            if not isinstance(episode, dict):
+                continue
+            for segment in episode.get('segments', []):
+                if not isinstance(segment, dict):
+                    continue
+                segment_scene = segment.get('scene_number') or segment.get('segment_number')
+                if segment_scene == scene_number and segment.get('segment_id'):
+                    ids.append(segment['segment_id'])
+
+        return list(dict.fromkeys(ids))
+
+    @staticmethod
+    def _asset_exists(code_dir: str, path: str) -> bool:
+        if not path:
+            return False
+        candidate = path if os.path.isabs(path) else os.path.join(code_dir, path.lstrip('/'))
+        return os.path.exists(candidate)
+
+    @classmethod
+    def _count_existing_assets(
+        cls,
+        items: List[Any],
+        target_ids: List[str],
+        code_dir: str,
+        *,
+        include_versions: bool,
+    ) -> int:
+        count = 0
+        target_set = set(target_ids)
+        for item in items:
+            if not isinstance(item, dict) or item.get('id') not in target_set:
+                continue
+            selected = item.get('selected')
+            if selected and cls._asset_exists(code_dir, selected):
+                count += 1
+            if include_versions:
+                versions = item.get('versions', [])
+                for version in versions if isinstance(versions, list) else []:
+                    if version and version != selected and cls._asset_exists(code_dir, version):
+                        count += 1
+        return count
 
     def list_saved_sessions(self) -> List[Dict]:
         """列出所有已保存的会话概要"""

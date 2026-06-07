@@ -139,7 +139,17 @@ export default function WorkflowPanel() {
 
   const abortRef = useRef<AbortController | null>(null);
   const stoppedRef = useRef(false);
+  const autoModeRef = useRef(autoMode);
   const pollRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    autoModeRef.current = autoMode;
+  }, [autoMode]);
+
+  const handleAutoModeChange = useCallback((nextAutoMode: boolean) => {
+    autoModeRef.current = nextAutoMode;
+    setAutoMode(nextAutoMode);
+  }, []);
 
   // 清理轮询
   useEffect(() => {
@@ -508,7 +518,7 @@ export default function WorkflowPanel() {
     if (isRunning) return;
     stoppedRef.current = false;
     const useAutoMode = autoOverride !== undefined ? autoOverride : autoMode;
-    if (autoOverride !== undefined) setAutoMode(autoOverride);
+    if (autoOverride !== undefined) handleAutoModeChange(autoOverride);
     setIsRunning(true);
     setStageStates(initStageStates());
     setProjectParams(params);
@@ -584,7 +594,7 @@ export default function WorkflowPanel() {
         // waiting: 等待用户介入（如选择角色/图片），不能自动 continue
         // completed: 阶段完成，等待确认进入下一阶段
         if (stageStatus === 'completed' || stageStatus === 'session_completed') {
-          if (useAutoMode) {
+          if (autoModeRef.current) {
             // 代理模式：自动确认并继续
             await continueWorkflow(result.session_id);
             updateStageState(stageId, { status: 'completed', progressMessage: '已自动确认' });
@@ -691,7 +701,7 @@ export default function WorkflowPanel() {
           // waiting: 等待用户介入（如选择角色/图片），不能自动 continue
           // completed: 阶段完成，等待确认进入下一阶段，可以自动 continue
           if (nStageStatus === 'completed' || nStageStatus === 'session_completed') {
-            if (autoMode) {
+            if (autoModeRef.current) {
               await continueWorkflow(sessionId);
               updateStageState(nextStage, { status: 'completed', progressMessage: '已自动确认' });
               setCompletedStagesFromSession(prev => [...prev, nextStage]);
@@ -1362,7 +1372,7 @@ export default function WorkflowPanel() {
         isRunning={effectiveIsRunning}
         onStop={handleStop}
         autoMode={autoMode}
-        onAutoModeChange={setAutoMode}
+        onAutoModeChange={handleAutoModeChange}
         modelConfig={modelConfig}
         onModelConfigChange={handleModelConfigChange}
         projectStatus={projectStatus}

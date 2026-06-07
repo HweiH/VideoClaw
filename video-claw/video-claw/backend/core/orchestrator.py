@@ -94,14 +94,13 @@ def _extract_session_meta(data: Dict[str, Any]) -> Dict[str, Any]:
 class WorkflowState:
     """工作流状态"""
 
-    # 状态说明：
-    # - pending: 新建会话，还没有任何数据，也没有在运行
-    # - running: 会话正在运行
-    # - waiting: 会话在某一阶段内等待用户介入（如选择角色、选择图片等）
-    # - completed: 会话完成了某一阶段，等待用户确定开始下一阶段
-    # - completed: 会话全部完成
-    # - stopped: 用户手动停止
-    # - error: 执行中遇到错误
+    # 阶段状态说明：
+    # - pending: 阶段还没有产物，也没有在运行
+    # - running: 阶段正在执行
+    # - waiting: 阶段已产出内容，但需要用户介入（如选择角色、选择图片等）
+    # - completed: 阶段已完成，可进入下一阶段
+    # - stopped: 阶段被用户手动停止
+    # - error: 阶段执行中遇到错误
 
     def __init__(self, session_id: str):
         self.session_id = session_id
@@ -1004,27 +1003,6 @@ class WorkflowEngine:
             if active_registered:
                 with self._state_lock:
                     self._active_sessions.discard(state.session_id)
-
-    async def handle_intervention(self,
-                                  session_id: str,
-                                  stage: str,
-                                  modifications: Dict[str, Any]) -> Dict:
-        with self._state_lock:
-            state = self.get_state(session_id)
-            if not state:
-                raise KeyError(f"Session not found: {session_id}")
-            current_artifact = copy.deepcopy(state.artifacts.get(stage, {}))
-        stage_enum = WorkflowStage(stage)
-
-        input_data = current_artifact if isinstance(current_artifact, dict) else {}
-        input_data.update(modifications)
-
-        res = await self.execute_stage(state, stage_enum, input_data, intervention=modifications)
-        with self._state_lock:
-            # 处理完干预后再次校验状态
-            self._recalculate_all_statuses(state)
-            self.save_session_to_disk(session_id)
-        return res
 
     async def continue_workflow(self, session_id: str) -> Dict:
         with self._state_lock:

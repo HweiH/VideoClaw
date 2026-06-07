@@ -1258,7 +1258,7 @@ export default function WorkflowPanel() {
   }
 
   // ── 计算项目状态 ──
-  // 后端状态: pending, running, waiting, completed, completed, error
+  // 后端阶段状态: pending, running, waiting, completed, stopped, error
   // 前端 StageStatus: pending, running, waiting, completed, error
   const hasRunning = Object.values(stageStates).some(s => s.status === 'running');
   const hasWaiting = Object.values(stageStates).some(s => s.status === 'waiting');

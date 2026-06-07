@@ -49,7 +49,7 @@ interface TopBarProps {
   modelConfig?: ModelConfig;
   /** 模型配置变更 */
   onModelConfigChange?: (config: ModelConfig) => void;
-  /** 项目状态（如 running, waiting, completed, completed, idle, error 等） */
+  /** 项目状态（如 running, waiting, completed, stopped, idle, error 等） */
   projectStatus?: string;
 }
 

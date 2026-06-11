@@ -61,17 +61,26 @@ class VideoDirectorAgent(AgentInterface):
     # ─── 视频生成 ───
 
     def _generate_one(self, sid: str, segment_id: str, prompt: str,
-                      img_path: str, video_model: str,
+                      img_path: Optional[str], video_model: str,
                       duration: int = 10, sound: str = "",
                       shot_type: str = "multi",
                       video_ratio: str = "16:9",
-                      video_resolution: str = "720P") -> tuple:
+                      video_resolution: str = "720P",
+                      video_generation_mode: str = "first_frame",
+                      last_image_path: Optional[str] = None,
+                      reference_image_paths: Optional[List[str]] = None) -> tuple:
         """生成单个视频片段，返回 (segment_id, path_or_None)"""
         if self.cancellation_check and self.cancellation_check():
             logger.info(f"VideoDirectorAgent: {segment_id} 跳过（用户取消）")
             return segment_id, None
 
-        if not os.path.exists(img_path):
+        reference_image_paths = reference_image_paths or []
+        if video_generation_mode == "reference":
+            missing_refs = [path for path in reference_image_paths if not os.path.exists(path)]
+            if not reference_image_paths or missing_refs:
+                logger.warning("Reference images missing for %s: %s", segment_id, missing_refs or reference_image_paths)
+                return segment_id, None
+        elif not img_path or not os.path.exists(img_path):
             logger.warning(f"Image missing for {segment_id}: {img_path}")
             return segment_id, None
 
@@ -89,6 +98,8 @@ class VideoDirectorAgent(AgentInterface):
                 shot_type=shot_type,
                 video_ratio=video_ratio,
                 resolution=video_resolution,
+                last_image_path=last_image_path if video_generation_mode == "start_end_frame" else None,
+                reference_image_paths=reference_image_paths if video_generation_mode == "reference" else None,
             )
             return segment_id, save_path
         except Exception as e:
@@ -159,6 +170,102 @@ class VideoDirectorAgent(AgentInterface):
 
         # 3. 默认路径
         return os.path.abspath(os.path.join('code/result/image', str(sid), 'Scenes', f"{segment_id}.jpg"))
+
+    def _get_next_reference_image(self, sid: str, segment_index: int, segments: list, scene_map: dict) -> Optional[str]:
+        """首尾帧模式下，优先用下一个片段参考图作为尾帧。"""
+        if segment_index + 1 >= len(segments):
+            return None
+        next_segment_id = segments[segment_index + 1].get("segment_id")
+        if not next_segment_id:
+            return None
+        path = self._get_reference_image(sid, next_segment_id, scene_map)
+        return path if path and os.path.exists(path) else None
+
+    @staticmethod
+    def _asset_selected_path(asset: dict) -> str:
+        selected = asset.get("selected") or ""
+        if selected and os.path.exists(selected):
+            return selected
+        # Legacy session compatibility: some old artifacts only have versions and no selected field.
+        for path in reversed(asset.get("versions") or []):
+            if path and os.path.exists(path):
+                return path
+        return ""
+
+    @staticmethod
+    def _build_name_asset_map(assets: list[dict]) -> dict[str, dict]:
+        """Build name -> asset mapping from character_design characters/settings."""
+        mapping = {}
+        for asset in assets:
+            name = str(asset.get("name") or "").strip()
+            asset_id = str(asset.get("id") or "").strip()
+            if name:
+                mapping[name] = asset
+            if asset_id:
+                mapping[asset_id] = asset
+        return mapping
+
+    @staticmethod
+    def _match_asset_by_name(name: str, assets: list[dict], asset_map: Optional[dict[str, dict]] = None) -> Optional[dict]:
+        clean_name = (name or "").strip()
+        if not clean_name:
+            return None
+        if asset_map and clean_name in asset_map:
+            return asset_map[clean_name]
+        for asset in assets:
+            asset_name = str(asset.get("name") or "").strip()
+            if asset_name and asset_name == clean_name:
+                return asset
+        for asset in assets:
+            asset_name = str(asset.get("name") or "").strip()
+            if asset_name and (asset_name in clean_name or clean_name in asset_name):
+                return asset
+        return None
+
+    def _get_segment_reference_assets(self, segment: dict, character_artifact: dict) -> List[str]:
+        """参考图生视频：按 segment.characters/location 读取第二阶段用户选中的人物图和场景图。"""
+        characters = character_artifact.get("characters", []) if isinstance(character_artifact, dict) else []
+        settings = character_artifact.get("settings", []) if isinstance(character_artifact, dict) else []
+        character_map = self._build_name_asset_map(characters)
+        setting_map = self._build_name_asset_map(settings)
+        reference_paths: List[str] = []
+        seen = set()
+
+        def add_asset(asset: Optional[dict]) -> None:
+            if not asset:
+                return
+            path = self._asset_selected_path(asset)
+            if path and path not in seen:
+                reference_paths.append(path)
+                seen.add(path)
+
+        location = str(segment.get("location") or "").strip()
+        add_asset(self._match_asset_by_name(location, settings, setting_map))
+
+        for character_name in segment.get("characters") or []:
+            add_asset(self._match_asset_by_name(str(character_name), characters, character_map))
+
+        return reference_paths
+
+    @staticmethod
+    def _select_video_model(input_data: dict, session_meta: dict) -> tuple[str, str]:
+        mode = (
+            input_data.get("video_generation_mode")
+            or session_meta.get("video_generation_mode")
+            or "first_frame"
+        )
+        model_key = {
+            "first_frame": "video_first_frame_model",
+            "start_end_frame": "video_start_end_model",
+            "reference": "video_reference_model",
+        }.get(mode, "video_first_frame_model")
+        model = input_data.get(model_key) or session_meta.get(model_key)
+        if not model:
+            # Legacy session compatibility: sessions created before mode-specific video models only have video_model.
+            model = input_data.get("video_model") or session_meta.get("video_model")
+        if not model:
+            raise ValueError("Missing required model configuration: video_model")
+        return mode, model
 
     # ─── 预览 / Payload ───
 
@@ -238,7 +345,8 @@ class VideoDirectorAgent(AgentInterface):
                     clip["selected"] = selected_clips[clip_id]
             return payload
 
-        video_model = self._require_input(input_data, "video_model")
+        session_meta = self._session_meta(input_data)
+        video_generation_mode, video_model = self._select_video_model(input_data, session_meta)
         enable_concurrency = input_data.get("enable_concurrency", True)
         from models.config_model import get_max_concurrency
         concurrency = get_max_concurrency(video_model, enable_concurrency)
@@ -248,7 +356,6 @@ class VideoDirectorAgent(AgentInterface):
         video_shot_type = input_data.get("video_shot_type", "multi")
 
         artifacts = self._session_artifacts(input_data)
-        session_meta = self._session_meta(input_data)
         
         # 1. 获取拍摄片段列表 (从 Storyboard)
         episodes = artifacts.get('storyboard', {}).get('episodes', [])
@@ -264,6 +371,7 @@ class VideoDirectorAgent(AgentInterface):
         ref_art = artifacts.get('reference_generation', {})
         scene_list = ref_art.get('scenes', [])
         scene_map = {s['id']: s for s in scene_list if 'id' in s}
+        character_art = artifacts.get('character_design', {})
         
         style_zh = input_data.get('style') or session_meta.get('style') or 'realistic'
         # 简单映射为中文显示名
@@ -298,12 +406,24 @@ class VideoDirectorAgent(AgentInterface):
                             if not seg: continue
                             prompt = self._assemble_prompt(seg, style_prompt, video_data=clip)
 
-                            img_path = self._get_reference_image(sid, seg_id, scene_map)
+                            reference_image_paths = None
+                            if video_generation_mode == "reference":
+                                img_path = None
+                                reference_image_paths = self._get_segment_reference_assets(seg, character_art)
+                                if not reference_image_paths:
+                                    logger.warning("VideoDirectorAgent: %s 参考图模式未匹配到第二阶段人物/场景图", seg_id)
+                            else:
+                                img_path = self._get_reference_image(sid, seg_id, scene_map)
                             duration = seg.get("total_duration", 10)
+                            seg_index = segments.index(seg)
+                            last_img_path = self._get_next_reference_image(sid, seg_index, segments, scene_map)
+                            if video_generation_mode == "start_end_frame" and not last_img_path:
+                                logger.warning("VideoDirectorAgent: %s 首尾帧模式缺少尾帧，回退为首帧生视频入参", seg_id)
                             fut = executor.submit(
                                 self._generate_one, sid, seg_id, prompt,
                                 img_path, video_model, duration,
-                                "", video_shot_type, video_ratio, video_resolution
+                                "", video_shot_type, video_ratio, video_resolution,
+                                video_generation_mode, last_img_path, reference_image_paths
                             )
                             futs[fut] = seg_id
                         for fut in as_completed(futs):
@@ -348,21 +468,31 @@ class VideoDirectorAgent(AgentInterface):
 
         def run():
             tasks = []
-            for seg in segments:
+            for seg_index, seg in enumerate(segments):
                 seg_id = seg["segment_id"]
                 existing = self._list_versions(sid, seg_id)
                 if existing: continue
                 prompt = self._assemble_prompt(seg, style_prompt)
-                img_path = self._get_reference_image(sid, seg_id, scene_map)
+                reference_image_paths = None
+                if video_generation_mode == "reference":
+                    img_path = None
+                    reference_image_paths = self._get_segment_reference_assets(seg, character_art)
+                    if not reference_image_paths:
+                        logger.warning("VideoDirectorAgent: %s 参考图模式未匹配到第二阶段人物/场景图", seg_id)
+                else:
+                    img_path = self._get_reference_image(sid, seg_id, scene_map)
                 duration = seg.get("total_duration", 10)
-                tasks.append((seg_id, prompt, img_path, duration))
+                last_img_path = self._get_next_reference_image(sid, seg_index, segments, scene_map)
+                if video_generation_mode == "start_end_frame" and not last_img_path:
+                    logger.warning("VideoDirectorAgent: %s 首尾帧模式缺少尾帧，回退为首帧生视频入参", seg_id)
+                tasks.append((seg_id, prompt, img_path, duration, last_img_path, reference_image_paths))
             if not tasks:
                 self._report_progress("视频生成", "所有视频片段已存在", 95)
                 return
             done = 0
             with ThreadPoolExecutor(max_workers=concurrency) as executor:
                 futs = {}
-                for seg_id, prompt, img_path, dur in tasks:
+                for seg_id, prompt, img_path, dur, last_img_path, reference_image_paths in tasks:
                     # 提交前立即发送正在运行的状态，让前端 UI 更新
                     self._report_progress("视频生成", f"启动生成: {seg_id}", 5, data={
                         "asset_complete": {
@@ -373,7 +503,8 @@ class VideoDirectorAgent(AgentInterface):
                     fut = executor.submit(
                         self._generate_one, sid, seg_id, prompt,
                         img_path, video_model, dur,
-                        "", video_shot_type, video_ratio, video_resolution
+                        "", video_shot_type, video_ratio, video_resolution,
+                        video_generation_mode, last_img_path, reference_image_paths
                     )
                     futs[fut] = seg_id
                 for fut in as_completed(futs):

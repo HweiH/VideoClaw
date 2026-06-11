@@ -13,6 +13,8 @@ SESSION_PARAM_KEYS = [
     "idea", "user_textbox_input", "style", "video_ratio", "video_resolution",
     "llm_model", "vlm_model",
     "image_t2i_model", "image_it2i_model", "video_model",
+    "video_first_frame_model", "video_start_end_model", "video_reference_model",
+    "video_generation_mode",
     "video_style", "expand_idea", "enable_concurrency", "web_search", "episodes"
 ]
 

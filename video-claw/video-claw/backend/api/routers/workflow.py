@@ -20,12 +20,31 @@ REQUIRED_MODEL_FIELDS = (
     "vlm_model",
     "image_t2i_model",
     "image_it2i_model",
-    "video_model",
 )
+
+VIDEO_MODE_TO_MODEL_FIELD = {
+    "first_frame": "video_first_frame_model",
+    "start_end_frame": "video_start_end_model",
+    "reference": "video_reference_model",
+}
+
+
+def _active_video_model(values: dict) -> str:
+    mode = values.get("video_generation_mode") or "first_frame"
+    model_field = VIDEO_MODE_TO_MODEL_FIELD.get(mode, "video_first_frame_model")
+    default_attr = {
+        "video_first_frame_model": "VIDEO_FIRST_FRAME_MODEL",
+        "video_start_end_model": "VIDEO_START_END_MODEL",
+        "video_reference_model": "VIDEO_REFERENCE_MODEL",
+    }.get(model_field, "VIDEO_MODEL")
+    # Legacy session compatibility: fall back to the old single video_model field when mode-specific fields are absent.
+    return values.get(model_field) or values.get("video_model") or getattr(settings, default_attr, "") or ""
 
 
 def _require_model_fields(values: dict) -> None:
     missing = [field for field in REQUIRED_MODEL_FIELDS if not values.get(field)]
+    if not _active_video_model(values):
+        missing.append("video_model")
     if missing:
         raise HTTPException(
             status_code=400,
@@ -50,11 +69,17 @@ async def start_project(req: ProjectStartRequest):
         "vlm_model": req.vlm_model,
         "image_t2i_model": req.image_t2i_model,
         "image_it2i_model": req.image_it2i_model,
+        # Legacy request/session compatibility: clients created before the split only send video_model.
+        "video_first_frame_model": req.video_first_frame_model or req.video_model or getattr(settings, "VIDEO_FIRST_FRAME_MODEL", ""),
+        "video_start_end_model": req.video_start_end_model or getattr(settings, "VIDEO_START_END_MODEL", ""),
+        "video_reference_model": req.video_reference_model or getattr(settings, "VIDEO_REFERENCE_MODEL", ""),
+        "video_generation_mode": req.video_generation_mode or getattr(settings, "VIDEO_GENERATION_MODE", "first_frame"),
         "video_model": req.video_model,
         "enable_concurrency": req.enable_concurrency if req.enable_concurrency is not None else True,
         "web_search": req.web_search if req.web_search is not None else False,
         "episodes": req.episodes if req.episodes is not None else 4,
     }
+    meta["video_model"] = _active_video_model(meta)
     session = workflow_engine.create_session(session_id, meta)
 
     return {
@@ -68,6 +93,10 @@ async def start_project(req: ProjectStartRequest):
             "vlm_model": meta["vlm_model"],
             "image_t2i_model": meta["image_t2i_model"],
             "image_it2i_model": meta["image_it2i_model"],
+            "video_first_frame_model": meta["video_first_frame_model"],
+            "video_start_end_model": meta["video_start_end_model"],
+            "video_reference_model": meta["video_reference_model"],
+            "video_generation_mode": meta["video_generation_mode"],
             "video_model": meta["video_model"],
             "episodes": meta["episodes"],
             "video_ratio": meta["video_ratio"],
@@ -145,7 +174,21 @@ async def get_artifact(session_id: str, stage: str):
 @router.patch("/api/project/{session_id}/models")
 async def update_models(session_id: str, request: Request):
     body = await request.json()
-    allowed_keys = ("llm_model", "vlm_model", "image_t2i_model", "image_it2i_model", "video_model", "video_ratio", "video_resolution", "style", "enable_concurrency")
+    allowed_keys = (
+        "llm_model",
+        "vlm_model",
+        "image_t2i_model",
+        "image_it2i_model",
+        "video_model",
+        "video_first_frame_model",
+        "video_start_end_model",
+        "video_reference_model",
+        "video_generation_mode",
+        "video_ratio",
+        "video_resolution",
+        "style",
+        "enable_concurrency",
+    )
     try:
         return workflow_engine.update_session_meta(session_id, body if isinstance(body, dict) else {}, allowed_keys)
     except KeyError:

@@ -62,6 +62,10 @@ SESSION_META_KEYS = (
     "image_t2i_model",
     "image_it2i_model",
     "video_model",
+    "video_first_frame_model",
+    "video_start_end_model",
+    "video_reference_model",
+    "video_generation_mode",
     "video_style",
     "enable_concurrency",
     "web_search",
@@ -85,6 +89,7 @@ def _extract_session_meta(data: Dict[str, Any]) -> Dict[str, Any]:
     nested_meta = data.get("meta")
     if isinstance(nested_meta, dict):
         meta.update({k: _normalize_meta_value(v) for k, v in nested_meta.items() if v is not None})
+    # Legacy session compatibility: old session JSON stored these fields at the root instead of under meta.
     for key in SESSION_META_KEYS:
         if key not in meta and key in data and data[key] is not None:
             meta[key] = _normalize_meta_value(data[key])
@@ -1372,7 +1377,7 @@ class WorkflowEngine:
             if "created_at" not in data:
                 data["created_at"] = time.time()
 
-            # 会话级生成参数统一保存在 meta 中；清理旧版本遗留的根字段。
+            # Legacy session compatibility: clean root-level generation fields left by old session JSON.
             for key in SESSION_META_KEYS:
                 data.pop(key, None)
             

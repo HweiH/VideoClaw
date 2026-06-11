@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react';
 import { CheckCircle, Loader2, Save, Settings, XCircle } from 'lucide-react';
 import BrandHeader from '@/components/BrandHeader';
-import { fetchModelGroupsByType } from '@/lib/modelRegistry';
+import { fetchModelGroupsByType, fetchVideoModelGroupsByAbility } from '@/lib/modelRegistry';
 import {
   VIDEO_RATIOS,
   VIDEO_RESOLUTIONS,
+  VIDEO_GENERATION_MODES,
   STYLES,
   type ProviderGroup,
 } from '@/config/models';
@@ -20,15 +21,16 @@ type Field = {
   options?: Array<{ id: string; label: string }> | ProviderGroup[];
 };
 
-type ModelSelectKey = 'llm' | 'vlm' | 'image_it2i' | 'image_t2i' | 'video' | 'eval';
+type ModelSelectKey = 'llm' | 'vlm' | 'image_it2i' | 'image_t2i' | 'video_first_frame' | 'video_start_end' | 'video_reference';
 
 const EMPTY_MODEL_SELECTS: Record<ModelSelectKey, ProviderGroup[]> = {
   llm: [],
   vlm: [],
   image_it2i: [],
   image_t2i: [],
-  video: [],
-  eval: [],
+  video_first_frame: [],
+  video_start_end: [],
+  video_reference: [],
 };
 
 const LOG_LEVEL_OPTIONS = [
@@ -121,14 +123,16 @@ const GROUPS: Array<{ title: string; description: string; fields: Field[] }> = [
       { path: 'models.vlm', label: 'vlm 视觉语言模型', type: 'select', options: [] },
       { path: 'models.image_it2i', label: 'image_it2i 图生图模型', type: 'select', options: [] },
       { path: 'models.image_t2i', label: 'image_t2i 文生图模型', type: 'select', options: [] },
-      { path: 'models.video', label: 'video 视频模型', type: 'select', options: [] },
-      { path: 'models.eval', label: 'eval 评估模型', type: 'select', options: [] },
+      { path: 'models.video_first_frame', label: 'video_first_frame 首帧生视频模型', type: 'select', options: [] },
+      { path: 'models.video_start_end', label: 'video_start_end 首尾帧生视频模型', type: 'select', options: [] },
+      { path: 'models.video_reference', label: 'video_reference 参考图生视频模型', type: 'select', options: [] },
     ],
   },
   {
     title: '视频生成配置',
-    description: '只对主流程生效：风格、画幅比例和视频分辨率。',
+    description: '只对主流程生效：选择视频生成方式、风格、画幅比例和视频分辨率。',
     fields: [
+      { path: 'generation.video_generation_mode', label: 'video_generation_mode 视频生成方式', type: 'select', options: VIDEO_GENERATION_MODES },
       { path: 'generation.style', label: 'style 风格', type: 'select', options: STYLES },
       { path: 'generation.video_ratio', label: 'video_ratio 视频长宽比', type: 'select', options: VIDEO_RATIOS },
       { path: 'generation.video_resolution', label: 'video_resolution 视频分辨率', type: 'select', options: VIDEO_RESOLUTIONS },
@@ -211,17 +215,20 @@ export default function SettingsPage() {
       fetchModelGroupsByType('vlm'),
       fetchModelGroupsByType('i2i'),
       fetchModelGroupsByType('t2i'),
-      fetchModelGroupsByType('video'),
+      fetchVideoModelGroupsByAbility('first_frame_i2v'),
+      fetchVideoModelGroupsByAbility('start_end_frame_i2v'),
+      fetchVideoModelGroupsByAbility('reference_to_video'),
     ])
-      .then(([llm, vlm, imageIt2i, imageT2i, video]) => {
+      .then(([llm, vlm, imageIt2i, imageT2i, firstFrameVideo, startEndVideo, referenceVideo]) => {
         if (cancelled) return;
         setModelSelects({
           llm,
           vlm,
           image_it2i: imageIt2i,
           image_t2i: imageT2i,
-          video,
-          eval: llm,
+          video_first_frame: firstFrameVideo,
+          video_start_end: startEndVideo,
+          video_reference: referenceVideo,
         });
       })
       .catch(() => {});
@@ -237,8 +244,9 @@ export default function SettingsPage() {
         if (field.path === 'models.vlm') return { ...field, options: modelSelects.vlm };
         if (field.path === 'models.image_it2i') return { ...field, options: modelSelects.image_it2i };
         if (field.path === 'models.image_t2i') return { ...field, options: modelSelects.image_t2i };
-        if (field.path === 'models.video') return { ...field, options: modelSelects.video };
-        if (field.path === 'models.eval') return { ...field, options: modelSelects.eval };
+        if (field.path === 'models.video_first_frame') return { ...field, options: modelSelects.video_first_frame };
+        if (field.path === 'models.video_start_end') return { ...field, options: modelSelects.video_start_end };
+        if (field.path === 'models.video_reference') return { ...field, options: modelSelects.video_reference };
         return field;
       }),
     };

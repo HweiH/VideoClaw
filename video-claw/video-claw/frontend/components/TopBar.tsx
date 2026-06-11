@@ -3,8 +3,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { CheckCircle, Circle, Loader, Edit3, AlertCircle, Square, Zap, Settings2, ChevronDown } from 'lucide-react';
 import clsx from 'clsx';
-import { VIDEO_RATIOS, VIDEO_RESOLUTIONS, type ProviderGroup } from '@/config/models';
-import { fetchModelGroupsByType } from '@/lib/modelRegistry';
+import {
+  VIDEO_RATIOS,
+  VIDEO_RESOLUTIONS,
+  VIDEO_GENERATION_MODES,
+  type ProviderGroup,
+  type VideoGenerationMode,
+} from '@/config/models';
+import { fetchModelGroupsByType, fetchVideoModelGroupsByAbility } from '@/lib/modelRegistry';
 
 export type StageStatus = 'pending' | 'running' | 'waiting' | 'completed' | 'error' | 'stopped';
 
@@ -25,6 +31,10 @@ export interface ModelConfig {
   image_t2i_model: string;
   image_it2i_model: string;
   video_model: string;
+  video_first_frame_model: string;
+  video_start_end_model: string;
+  video_reference_model: string;
+  video_generation_mode: VideoGenerationMode;
   video_ratio: string;
   video_resolution: string;
   enable_concurrency: boolean;
@@ -94,7 +104,9 @@ function ModelSelector({
   const [vlmProviders, setVlmProviders] = useState<ProviderGroup[]>([]);
   const [t2iProviders, setT2iProviders] = useState<ProviderGroup[]>([]);
   const [i2iProviders, setI2iProviders] = useState<ProviderGroup[]>([]);
-  const [videoProviders, setVideoProviders] = useState<ProviderGroup[]>([]);
+  const [firstFrameVideoProviders, setFirstFrameVideoProviders] = useState<ProviderGroup[]>([]);
+  const [startEndVideoProviders, setStartEndVideoProviders] = useState<ProviderGroup[]>([]);
+  const [referenceVideoProviders, setReferenceVideoProviders] = useState<ProviderGroup[]>([]);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -118,14 +130,54 @@ function ModelSelector({
     fetchModelGroupsByType('i2i')
       .then(groups => { if (!cancelled) setI2iProviders(groups); })
       .catch(() => {});
-    fetchModelGroupsByType('video')
-      .then(groups => { if (!cancelled) setVideoProviders(groups); })
+    fetchVideoModelGroupsByAbility('first_frame_i2v')
+      .then(groups => { if (!cancelled) setFirstFrameVideoProviders(groups); })
+      .catch(() => {});
+    fetchVideoModelGroupsByAbility('start_end_frame_i2v')
+      .then(groups => { if (!cancelled) setStartEndVideoProviders(groups); })
+      .catch(() => {});
+    fetchVideoModelGroupsByAbility('reference_to_video')
+      .then(groups => { if (!cancelled) setReferenceVideoProviders(groups); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
 
   const update = (key: keyof ModelConfig, val: string | boolean) => {
     onChange({ ...config, [key]: val });
+  };
+
+  const activeVideoModel =
+    config.video_generation_mode === 'start_end_frame'
+      ? config.video_start_end_model
+      : config.video_generation_mode === 'reference'
+        ? config.video_reference_model
+        : config.video_first_frame_model;
+  const activeVideoProviders =
+    config.video_generation_mode === 'start_end_frame'
+      ? startEndVideoProviders
+      : config.video_generation_mode === 'reference'
+        ? referenceVideoProviders
+        : firstFrameVideoProviders;
+  const activeVideoLabel = VIDEO_GENERATION_MODES.find(item => item.id === config.video_generation_mode)?.label || '首帧生视频';
+
+  const updateVideoMode = (mode: VideoGenerationMode) => {
+    const nextModel =
+      mode === 'start_end_frame'
+        ? config.video_start_end_model
+        : mode === 'reference'
+          ? config.video_reference_model
+          : config.video_first_frame_model;
+    onChange({ ...config, video_generation_mode: mode, video_model: nextModel });
+  };
+
+  const updateActiveVideoModel = (model: string) => {
+    if (config.video_generation_mode === 'start_end_frame') {
+      onChange({ ...config, video_start_end_model: model, video_model: model });
+    } else if (config.video_generation_mode === 'reference') {
+      onChange({ ...config, video_reference_model: model, video_model: model });
+    } else {
+      onChange({ ...config, video_first_frame_model: model, video_model: model });
+    }
   };
 
   return (
@@ -164,8 +216,20 @@ function ModelSelector({
             <ProviderSelect value={config.image_it2i_model} providers={i2iProviders} onChange={v => update('image_it2i_model', v)} />
           </label>
           <label className="flex flex-col gap-1">
-            <span className="text-[10px] text-gray-400 font-medium">视频模型</span>
-            <ProviderSelect value={config.video_model} providers={videoProviders} onChange={v => update('video_model', v)} />
+            <span className="text-[10px] text-gray-400 font-medium">视频生成方式</span>
+            <select
+              value={config.video_generation_mode}
+              onChange={e => updateVideoMode(e.target.value as VideoGenerationMode)}
+              className="bg-gray-50 border border-gray-200 rounded-lg px-2 py-1.5 text-xs text-gray-700 outline-none w-full"
+            >
+              {VIDEO_GENERATION_MODES.map(item => (
+                <option key={item.id} value={item.id}>{item.label}</option>
+              ))}
+            </select>
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-[10px] text-gray-400 font-medium">{activeVideoLabel}模型</span>
+            <ProviderSelect value={activeVideoModel} providers={activeVideoProviders} onChange={updateActiveVideoModel} />
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-[10px] text-gray-400 font-medium">视频比例</span>

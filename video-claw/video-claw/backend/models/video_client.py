@@ -319,3 +319,120 @@ class VideoClient:
             watermark=watermark,
             generate_audio=generate_audio,
         )
+
+
+def _split_csv(value: Optional[str]) -> list[str]:
+    if not value:
+        return []
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _str_to_bool(value: Optional[str]) -> Optional[bool]:
+    if value is None:
+        return None
+    normalized = value.strip().lower()
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    raise ValueError(f"Invalid boolean value: {value}")
+
+
+def _default_save_path(model: str, generation_mode: str) -> str:
+    safe_model = "".join(ch if ch.isalnum() or ch in {"-", "_", "."} else "_" for ch in model)
+    return os.path.join(Config.RESULT_DIR, "video", "test_client", f"{safe_model}_{generation_mode}.mp4")
+
+
+def _build_cli_parser():
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Test VideoClient with a selected generation mode and model.")
+    parser.add_argument("--generation-mode", choices=["first_frame", "start_end_frame", "reference"], default="first_frame")
+    parser.add_argument("--model", default="wan2.7-i2v", help="Video model id, e.g. wan2.7-i2v / wan2.7-r2v / happyhorse-1.0-r2v")
+    parser.add_argument("--prompt", default="电影感画面，人物自然移动，镜头稳定推进，不要字幕或水印。")
+    parser.add_argument("--image", help="First-frame image path for first_frame/start_end_frame, or an extra reference image for reference mode.")
+    parser.add_argument("--last-image", help="Last-frame image path for start_end_frame mode.")
+    parser.add_argument("--reference-images", help="Comma-separated reference image paths for reference mode.")
+    parser.add_argument("--reference-videos", help="Comma-separated reference video paths for reference mode.")
+    parser.add_argument("--reference-audio", help="Reference audio path for supported reference-to-video models.")
+    parser.add_argument("--audio", help="Driving audio path for supported image-to-video models.")
+    parser.add_argument("--first-clip", help="First clip path for supported video continuation models.")
+    parser.add_argument("--save-path", help="Output mp4 path. Defaults to code/result/video/test_client/<model>_<mode>.mp4")
+    parser.add_argument("--duration", type=int, default=5)
+    parser.add_argument("--ratio", default="16:9")
+    parser.add_argument("--resolution", default="720P")
+    parser.add_argument("--shot-type", default="multi")
+    parser.add_argument("--sound", default="")
+    parser.add_argument("--negative-prompt", default="")
+    parser.add_argument("--prompt-extend", choices=["true", "false"])
+    parser.add_argument("--watermark", choices=["true", "false"])
+    parser.add_argument("--seed", type=int)
+    parser.add_argument("--mode", default="pro", help="Kling mode fallback: std/pro.")
+    parser.add_argument("--cfg-scale", type=float, default=0.5)
+    parser.add_argument("--generate-audio", choices=["true", "false"])
+    parser.add_argument("--audio-enabled", choices=["true", "false"], help="Pass DashScope audio boolean for supported models.")
+    return parser
+
+
+def _cli_generate(args) -> str:
+    reference_image_paths = _split_csv(args.reference_images)
+    reference_video_paths = _split_csv(args.reference_videos)
+    image_path = args.image
+    last_image_path = None
+
+    if args.generation_mode == "first_frame":
+        if not image_path and not args.first_clip:
+            raise ValueError("first_frame mode requires --image or --first-clip.")
+    elif args.generation_mode == "start_end_frame":
+        if not image_path or not args.last_image:
+            raise ValueError("start_end_frame mode requires --image and --last-image.")
+        last_image_path = args.last_image
+    elif args.generation_mode == "reference":
+        if image_path:
+            reference_image_paths.append(image_path)
+        image_path = None
+        if not reference_image_paths and not reference_video_paths:
+            raise ValueError("reference mode requires --reference-images, --reference-videos, or --image.")
+
+    save_path = args.save_path or _default_save_path(args.model, args.generation_mode)
+    client = VideoClient()
+    return client.generate_video(
+        prompt=args.prompt,
+        image_path=image_path,
+        save_path=save_path,
+        model=args.model,
+        duration=args.duration,
+        shot_type=args.shot_type,
+        sound=args.sound,
+        video_ratio=args.ratio,
+        resolution=args.resolution,
+        last_image_path=last_image_path,
+        first_clip_path=args.first_clip,
+        reference_image_paths=reference_image_paths or None,
+        reference_video_paths=reference_video_paths or None,
+        reference_audio_path=args.reference_audio,
+        audio_path=args.audio,
+        negative_prompt=args.negative_prompt or None,
+        prompt_extend=_str_to_bool(args.prompt_extend),
+        watermark=_str_to_bool(args.watermark),
+        seed=args.seed,
+        mode=args.mode,
+        cfg_scale=args.cfg_scale,
+        generate_audio=_str_to_bool(args.generate_audio),
+        audio=_str_to_bool(args.audio_enabled),
+    )
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+    parser = _build_cli_parser()
+    cli_args = parser.parse_args()
+    try:
+        remote_url = _cli_generate(cli_args)
+        output_path = cli_args.save_path or _default_save_path(cli_args.model, cli_args.generation_mode)
+        print("✓ Video generation completed")
+        print(f"  Remote URL: {remote_url}")
+        print(f"  Local file: {os.path.abspath(output_path)}")
+    except Exception as exc:
+        print(f"✗ Video generation failed: {exc}", file=sys.stderr)
+        sys.exit(1)

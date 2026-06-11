@@ -37,3 +37,8 @@ export async function fetchModelGroupsByType(
   const models = await fetchApiModels({ modelType });
   return groupModelOptions(models);
 }
+
+export async function fetchVideoModelGroupsByAbility(ability: string): Promise<ProviderGroup[]> {
+  const models = await fetchApiModels({ mediaType: 'video', ability, verifiedOnly: true });
+  return groupModelOptions(models);
+}

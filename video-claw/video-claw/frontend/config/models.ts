@@ -11,6 +11,22 @@ export interface ProviderGroup {
     models: ModelOption[];
 }
 
+export type VideoGenerationMode = 'first_frame' | 'start_end_frame' | 'reference';
+
+export const VIDEO_GENERATION_MODES: Array<{ id: VideoGenerationMode; label: string; ability: string; modelKey: string }> = [
+    { id: 'first_frame', label: '首帧生视频', ability: 'first_frame_i2v', modelKey: 'video_first_frame_model' },
+    { id: 'start_end_frame', label: '首尾帧生视频', ability: 'start_end_frame_i2v', modelKey: 'video_start_end_model' },
+    { id: 'reference', label: '参考图生视频', ability: 'reference_to_video', modelKey: 'video_reference_model' },
+];
+
+export function videoModeAbility(mode: string | undefined) {
+    return VIDEO_GENERATION_MODES.find(item => item.id === mode)?.ability || 'first_frame_i2v';
+}
+
+export function videoModeModelKey(mode: string | undefined) {
+    return VIDEO_GENERATION_MODES.find(item => item.id === mode)?.modelKey || 'video_first_frame_model';
+}
+
 export const STYLES = [
     { id: 'comic-book', label: 'Comic Book / 漫画' },
     { id: 'anime', label: 'Anime / 动漫' },

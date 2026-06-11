@@ -4,9 +4,16 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Sparkles, Play, Settings2, Clock, ArrowRight, Zap, CheckCircle, Trash2, X, Lock, Globe, ListOrdered, Upload, Loader2 } from 'lucide-react';
 import clsx from 'clsx';
 import { PROMPT_EXAMPLES } from '@/config/examples';
-import { STYLES, VIDEO_RATIOS, VIDEO_RESOLUTIONS, type ProviderGroup } from '@/config/models';
+import {
+  STYLES,
+  VIDEO_RATIOS,
+  VIDEO_RESOLUTIONS,
+  VIDEO_GENERATION_MODES,
+  type ProviderGroup,
+  type VideoGenerationMode,
+} from '@/config/models';
 import { STAGES } from './TopBar';
-import { fetchModelGroupsByType } from '@/lib/modelRegistry';
+import { fetchModelGroupsByType, fetchVideoModelGroupsByAbility } from '@/lib/modelRegistry';
 
 export interface ProjectParams {
   idea: string;
@@ -19,6 +26,10 @@ export interface ProjectParams {
   image_t2i_model: string;
   image_it2i_model: string;
   video_model: string;
+  video_first_frame_model: string;
+  video_start_end_model: string;
+  video_reference_model: string;
+  video_generation_mode: VideoGenerationMode;
   expand_idea?: boolean;
   enable_concurrency?: boolean;
   web_search?: boolean;
@@ -63,7 +74,10 @@ export default function HomePage({ onStartProject, onResumeProject, onDeleteSess
   const [selectedVLM, setSelectedVLM] = useState('');
   const [selectedT2I, setSelectedT2I] = useState('');
   const [selectedI2I, setSelectedI2I] = useState('');
-  const [selectedVideo, setSelectedVideo] = useState('');
+  const [selectedFirstFrameVideo, setSelectedFirstFrameVideo] = useState('');
+  const [selectedStartEndVideo, setSelectedStartEndVideo] = useState('');
+  const [selectedReferenceVideo, setSelectedReferenceVideo] = useState('');
+  const [selectedVideoMode, setSelectedVideoMode] = useState<VideoGenerationMode>('first_frame');
   const [selectedRatio, setSelectedRatio] = useState('');
   const [selectedResolution, setSelectedResolution] = useState('720P');
   const [configLoading, setConfigLoading] = useState(true);
@@ -87,8 +101,16 @@ export default function HomePage({ onStartProject, onResumeProject, onDeleteSess
   const [vlmProviders, setVlmProviders] = useState<ProviderGroup[]>([]);
   const [t2iProviders, setT2iProviders] = useState<ProviderGroup[]>([]);
   const [i2iProviders, setI2iProviders] = useState<ProviderGroup[]>([]);
-  const [videoProviders, setVideoProviders] = useState<ProviderGroup[]>([]);
-  const modelConfigReady = Boolean(selectedLLM && selectedVLM && selectedT2I && selectedI2I && selectedVideo && selectedRatio && selectedResolution);
+  const [firstFrameVideoProviders, setFirstFrameVideoProviders] = useState<ProviderGroup[]>([]);
+  const [startEndVideoProviders, setStartEndVideoProviders] = useState<ProviderGroup[]>([]);
+  const [referenceVideoProviders, setReferenceVideoProviders] = useState<ProviderGroup[]>([]);
+  const activeVideoModel =
+    selectedVideoMode === 'start_end_frame'
+      ? selectedStartEndVideo
+      : selectedVideoMode === 'reference'
+        ? selectedReferenceVideo
+        : selectedFirstFrameVideo;
+  const modelConfigReady = Boolean(selectedLLM && selectedVLM && selectedT2I && selectedI2I && activeVideoModel && selectedRatio && selectedResolution);
   const canStart = Boolean((idea.trim() || uploadedFile) && modelConfigReady && !configLoading);
 
   useEffect(() => {
@@ -105,8 +127,14 @@ export default function HomePage({ onStartProject, onResumeProject, onDeleteSess
     fetchModelGroupsByType('i2i')
       .then(groups => { if (!cancelled) setI2iProviders(groups); })
       .catch(() => {});
-    fetchModelGroupsByType('video')
-      .then(groups => { if (!cancelled) setVideoProviders(groups); })
+    fetchVideoModelGroupsByAbility('first_frame_i2v')
+      .then(groups => { if (!cancelled) setFirstFrameVideoProviders(groups); })
+      .catch(() => {});
+    fetchVideoModelGroupsByAbility('start_end_frame_i2v')
+      .then(groups => { if (!cancelled) setStartEndVideoProviders(groups); })
+      .catch(() => {});
+    fetchVideoModelGroupsByAbility('reference_to_video')
+      .then(groups => { if (!cancelled) setReferenceVideoProviders(groups); })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -122,7 +150,13 @@ export default function HomePage({ onStartProject, onResumeProject, onDeleteSess
         const data = await resp.json();
         const models = data.config?.models || {};
         const generation = data.config?.generation || {};
-        if (!models.llm || !models.vlm || !models.image_t2i || !models.image_it2i || !models.video) {
+        // Legacy config compatibility: older config.yaml only has models.video, so treat it as first-frame video.
+        const firstFrameModel = models.video_first_frame || models.video;
+        const startEndModel = models.video_start_end || 'wan2.7-i2v';
+        const referenceModel = models.video_reference || 'wan2.7-r2v';
+        const videoMode = (generation.video_generation_mode || 'first_frame') as VideoGenerationMode;
+        const selectedModel = videoMode === 'start_end_frame' ? startEndModel : videoMode === 'reference' ? referenceModel : firstFrameModel;
+        if (!models.llm || !models.vlm || !models.image_t2i || !models.image_it2i || !selectedModel) {
           throw new Error('backend/config.yaml 缺少主流程默认模型');
         }
         if (cancelled) return;
@@ -131,7 +165,10 @@ export default function HomePage({ onStartProject, onResumeProject, onDeleteSess
         setSelectedVLM(models.vlm);
         setSelectedT2I(models.image_t2i);
         setSelectedI2I(models.image_it2i);
-        setSelectedVideo(models.video);
+        setSelectedVideoMode(videoMode);
+        setSelectedFirstFrameVideo(firstFrameModel);
+        setSelectedStartEndVideo(startEndModel);
+        setSelectedReferenceVideo(referenceModel);
         setSelectedRatio(generation.video_ratio || '16:9');
         setSelectedResolution(generation.video_resolution || '720P');
       } catch (e: any) {
@@ -158,6 +195,25 @@ export default function HomePage({ onStartProject, onResumeProject, onDeleteSess
     }
   };
 
+  const activeVideoProviders =
+    selectedVideoMode === 'start_end_frame'
+      ? startEndVideoProviders
+      : selectedVideoMode === 'reference'
+        ? referenceVideoProviders
+        : firstFrameVideoProviders;
+
+  const setActiveVideoModel = (value: string) => {
+    if (selectedVideoMode === 'start_end_frame') {
+      setSelectedStartEndVideo(value);
+    } else if (selectedVideoMode === 'reference') {
+      setSelectedReferenceVideo(value);
+    } else {
+      setSelectedFirstFrameVideo(value);
+    }
+  };
+
+  const selectedVideoModeLabel = VIDEO_GENERATION_MODES.find(item => item.id === selectedVideoMode)?.label || '首帧生视频';
+
   const handleStart = (auto?: boolean) => {
     if (!canStart) return;
     onStartProject({
@@ -170,7 +226,11 @@ export default function HomePage({ onStartProject, onResumeProject, onDeleteSess
       vlm_model: selectedVLM,
       image_t2i_model: selectedT2I,
       image_it2i_model: selectedI2I,
-      video_model: selectedVideo,
+      video_generation_mode: selectedVideoMode,
+      video_first_frame_model: selectedFirstFrameVideo,
+      video_start_end_model: selectedStartEndVideo,
+      video_reference_model: selectedReferenceVideo,
+      video_model: activeVideoModel,
       enable_concurrency: enableConcurrency,
       web_search: webSearch,
       episodes,
@@ -565,13 +625,25 @@ export default function HomePage({ onStartProject, onResumeProject, onDeleteSess
                   </select>
                 </label>
                 <label className="flex flex-col gap-1 col-span-2">
-                  <span className="text-gray-500 font-medium">视频模型</span>
+                  <span className="text-gray-500 font-medium">视频生成方式</span>
                   <select
-                    value={selectedVideo}
-                    onChange={e => setSelectedVideo(e.target.value)}
+                    value={selectedVideoMode}
+                    onChange={e => setSelectedVideoMode(e.target.value as VideoGenerationMode)}
                     className="bg-white border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 outline-none"
                   >
-                    {videoProviders.map(pg => (
+                    {VIDEO_GENERATION_MODES.map(item => (
+                      <option key={item.id} value={item.id}>{item.label}</option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex flex-col gap-1 col-span-2">
+                  <span className="text-gray-500 font-medium">{selectedVideoModeLabel}模型</span>
+                  <select
+                    value={activeVideoModel}
+                    onChange={e => setActiveVideoModel(e.target.value)}
+                    className="bg-white border border-gray-200 rounded-lg px-2.5 py-2 text-gray-700 outline-none"
+                  >
+                    {activeVideoProviders.map(pg => (
                       <optgroup key={pg.provider} label={pg.label}>
                         {pg.models.map(m => (
                           <option key={m.id} value={m.id}>{m.label}</option>

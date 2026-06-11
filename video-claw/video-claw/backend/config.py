@@ -63,12 +63,15 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "image_it2i": "doubao-seedream-5-0-260128",
         "image_t2i": "doubao-seedream-5-0-260128",
         "video": "wan2.7-i2v",
-        "eval": "qwen3.5-plus",
+        "video_first_frame": "wan2.7-i2v",
+        "video_start_end": "wan2.7-i2v",
+        "video_reference": "wan2.7-r2v",
     },
     "generation": {
         "style": "realistic",
         "video_ratio": "16:9",
         "video_resolution": "720P",
+        "video_generation_mode": "first_frame",
     },
 }
 
@@ -100,9 +103,17 @@ def _coerce_config(data: Dict[str, Any]) -> Dict[str, Any]:
     legacy_models = data.get("models", {}) if isinstance(data, dict) else {}
     if isinstance(legacy_models, dict):
         for legacy_key in ("style", "video_ratio", "video_resolution"):
+            # Legacy config compatibility: older config.yaml stored generation settings under models.*.
             if legacy_key in legacy_models and not _get(data, f"generation.{legacy_key}"):
                 clean.setdefault("generation", {})[legacy_key] = legacy_models[legacy_key]
             clean["models"].pop(legacy_key, None)
+        if legacy_models.get("video") and not any(
+            legacy_models.get(key) for key in ("video_first_frame", "video_start_end", "video_reference")
+        ):
+            # Legacy config compatibility: older configs had one models.video instead of mode-specific video models.
+            clean["models"]["video_first_frame"] = legacy_models["video"]
+        # Legacy config compatibility: models.eval was never used by runtime agents; keep it out after load.
+        clean["models"].pop("eval", None)
 
     server = clean["server"]
     server["host"] = str(server.get("host") or DEFAULT_CONFIG["server"]["host"])
@@ -228,10 +239,13 @@ class Config:
     IMAGE_IT2I_MODEL = _get(CONFIG, "models.image_it2i")
     IMAGE_T2I_MODEL = _get(CONFIG, "models.image_t2i")
     VIDEO_MODEL = _get(CONFIG, "models.video")
+    VIDEO_FIRST_FRAME_MODEL = _get(CONFIG, "models.video_first_frame")
+    VIDEO_START_END_MODEL = _get(CONFIG, "models.video_start_end")
+    VIDEO_REFERENCE_MODEL = _get(CONFIG, "models.video_reference")
     VIDEO_RATIO = _get(CONFIG, "generation.video_ratio")
     VIDEO_RESOLUTION = _get(CONFIG, "generation.video_resolution")
+    VIDEO_GENERATION_MODE = _get(CONFIG, "generation.video_generation_mode")
     STYLE = _get(CONFIG, "generation.style")
-    EVAL_MODEL = _get(CONFIG, "models.eval")
 
     BASE_DIR = str(BASE_DIR)
     CODE_DIR = os.path.join(BASE_DIR, "code")
@@ -300,10 +314,13 @@ class Config:
         cls.IMAGE_IT2I_MODEL = _get(clean, "models.image_it2i")
         cls.IMAGE_T2I_MODEL = _get(clean, "models.image_t2i")
         cls.VIDEO_MODEL = _get(clean, "models.video")
+        cls.VIDEO_FIRST_FRAME_MODEL = _get(clean, "models.video_first_frame")
+        cls.VIDEO_START_END_MODEL = _get(clean, "models.video_start_end")
+        cls.VIDEO_REFERENCE_MODEL = _get(clean, "models.video_reference")
         cls.VIDEO_RATIO = _get(clean, "generation.video_ratio")
         cls.VIDEO_RESOLUTION = _get(clean, "generation.video_resolution")
+        cls.VIDEO_GENERATION_MODE = _get(clean, "generation.video_generation_mode")
         cls.STYLE = _get(clean, "generation.style")
-        cls.EVAL_MODEL = _get(clean, "models.eval")
         return cls.as_dict()
 
     @classmethod

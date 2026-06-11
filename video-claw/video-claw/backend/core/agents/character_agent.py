@@ -606,6 +606,15 @@ class CharacterDesignerAgent(AgentInterface):
             with ThreadPoolExecutor(max_workers=concurrency) as executor:
                 futs = {}
                 for atype, aid, name, desc, species in all_tasks:
+                    existing_versions = self._list_versions(sid, atype, aid)
+                    self._report_progress("角色设计", f"正在生成: {name}", 10, data={
+                        "asset_complete": {
+                            "type": atype,
+                            "id": aid,
+                            "status": "running",
+                            "versions": existing_versions,
+                        }
+                    })
                     fut = executor.submit(
                         self._generate_one, img_client,
                         aid, name, desc, atype, style, species, t2i_model, vlm_model, sid,

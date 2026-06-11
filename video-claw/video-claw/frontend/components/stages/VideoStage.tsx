@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { Film, RefreshCw, ChevronLeft, ChevronRight, Loader, AlertCircle, AlertTriangle, Play, Volume2, VolumeX, Clapperboard, Edit2, Save, X } from 'lucide-react';
+import { Film, RefreshCw, ChevronLeft, ChevronRight, Loader, AlertCircle, AlertTriangle, Play, Edit2, Save, X } from 'lucide-react';
 import type { StageViewProps } from './types';
 import { assetUrl } from './utils';
 import StageActions from './StageActions';
@@ -331,7 +331,7 @@ function ClipRow({
 }
 
 /* ─── 主组件 ─── */
-export default function VideoStage({ state, sessionId, onConfirm, onIntervene, onRegenerate, onUpdateArtifact, onSaveSelections, showConfirm, isRunning, videoSound = 'on', videoShotType = 'multi', onVideoParamsChange, referenceArtifact, hasPendingItems, hasNextStageStarted, scriptArtifact }: StageViewProps) {
+export default function VideoStage({ state, sessionId, onConfirm, onIntervene, onRegenerate, onUpdateArtifact, onSaveSelections, showConfirm, isRunning, referenceArtifact, hasPendingItems, hasNextStageStarted, scriptArtifact }: StageViewProps) {
   // 提取剧集标题映射
   const episodeTitleMap = React.useMemo(() => {
     const map: Record<number, string> = {};
@@ -520,61 +520,6 @@ export default function VideoStage({ state, sessionId, onConfirm, onIntervene, o
         <p className="text-sm text-gray-500 mb-4">
           将场景参考图转化为视频片段，支持逐项重新生成
         </p>
-
-        {/* ── 视频生成参数 ── */}
-        <div className="flex flex-wrap items-center gap-4 sm:gap-6 mb-6 px-4 py-3 bg-white border border-gray-200 rounded-xl">
-          {/* 音效开关 */}
-          <div className="flex items-center gap-2">
-            <span className="text-xs text-gray-500 font-medium">音效</span>
-            <button
-              onClick={() => onVideoParamsChange?.({ videoSound: videoSound === 'on' ? 'off' : 'on' })}
-              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                videoSound === 'on' ? 'bg-rose-500' : 'bg-gray-300'
-              }`}
-            >
-              <span
-                className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${
-                  videoSound === 'on' ? 'translate-x-6' : 'translate-x-1'
-                }`}
-              />
-            </button>
-            {videoSound === 'on' ? (
-              <Volume2 className="w-3.5 h-3.5 text-rose-500" />
-            ) : (
-              <VolumeX className="w-3.5 h-3.5 text-gray-400" />
-            )}
-          </div>
-
-          <div className="w-px h-5 bg-gray-200" />
-
-          {/* 镜头模式 */}
-          <div className="flex items-center gap-2">
-            <Clapperboard className="w-3.5 h-3.5 text-gray-400" />
-            <span className="text-xs text-gray-500 font-medium">镜头</span>
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
-              <button
-                onClick={() => onVideoParamsChange?.({ videoShotType: 'single' })}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                  videoShotType === 'single'
-                    ? 'bg-white text-rose-600 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                单镜头
-              </button>
-              <button
-                onClick={() => onVideoParamsChange?.({ videoShotType: 'multi' })}
-                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
-                  videoShotType === 'multi'
-                    ? 'bg-white text-rose-600 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
-                多镜头
-              </button>
-            </div>
-          </div>
-        </div>
 
         {/* 运行中 */}
         {state.status === 'running' && (

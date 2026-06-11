@@ -131,8 +131,6 @@ export default function WorkflowPanel() {
   const [history, setHistory] = useState<HistoryItem[]>([]);
   const [projectParams, setProjectParams] = useState<ProjectParams | null>(null);
   const [autoMode, setAutoMode] = useState(false);
-  const [videoSound, setVideoSound] = useState('on');
-  const [videoShotType, setVideoShotType] = useState('multi');
   // 用于顶栏流程图状态判断
   const [currentStageFromSession, setCurrentStageFromSession] = useState<string | null>(null);
   const [completedStagesFromSession, setCompletedStagesFromSession] = useState<string[]>([]);
@@ -663,8 +661,8 @@ export default function WorkflowPanel() {
           video_model: projectParams?.video_model,
           video_ratio: projectParams?.video_ratio,
           video_resolution: projectParams?.video_resolution,
-          video_sound: videoSound,
-          video_shot_type: videoShotType,
+          video_sound: 'on',
+          video_shot_type: 'multi',
         };
         // 从剧本产物获取实际场景数
         try {
@@ -768,8 +766,8 @@ export default function WorkflowPanel() {
       video_start_end_model: projectParams?.video_start_end_model,
       video_reference_model: projectParams?.video_reference_model,
       video_model: projectParams?.video_model,
-      video_sound: videoSound,
-      video_shot_type: videoShotType,
+      video_sound: 'on',
+      video_shot_type: 'multi',
     };
 
     // 设置 running 状态以便显示进度条（如 Logline 选择后生成剧本）
@@ -1374,12 +1372,6 @@ export default function WorkflowPanel() {
         isRunning={effectiveIsRunning}
         hasPendingItems={hasPendingItems}
         hasNextStageStarted={hasNextStageStarted}
-        videoSound={videoSound}
-        videoShotType={videoShotType}
-        onVideoParamsChange={(params: { videoSound?: string; videoShotType?: string }) => {
-          if (params.videoSound !== undefined) setVideoSound(params.videoSound);
-          if (params.videoShotType !== undefined) setVideoShotType(params.videoShotType);
-        }}
         referenceArtifact={referenceArtifact}
         scriptArtifact={scriptArtifact}
         artifacts={Object.keys(stageStates).reduce((acc: any, key) => {

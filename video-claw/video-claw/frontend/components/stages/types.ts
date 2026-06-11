@@ -23,10 +23,6 @@ export interface StageViewProps {
   hasPendingItems?: boolean;
   /** 后续阶段是否已开始（阶段1、3使用） */
   hasNextStageStarted?: boolean;
-  /** 视频生成参数（仅 VideoStage 使用） */
-  videoSound?: string;
-  videoShotType?: string;
-  onVideoParamsChange?: (params: { videoSound?: string; videoShotType?: string }) => void;
   /** 用于组件访问其他阶段的数据 */
   artifacts?: Record<string, any>;
   /** 参考图阶段的 artifact（仅 VideoStage 使用，用于检查依赖） */

@@ -661,6 +661,15 @@ class ReferenceGeneratorAgent(AgentInterface):
                         return min(95, 5 + int(90 * completed / max(total, 1)))
 
                     def regen_segment_run(segment_id: str, index: int):
+                        existing_versions = self._list_versions(sid, segment_id)
+                        self._report_progress("参考图", f"正在生成: {segment_id}", 5, data={
+                            "asset_complete": {
+                                "type": "scenes",
+                                "id": segment_id,
+                                "status": "running",
+                                "versions": existing_versions,
+                            }
+                        })
                         seg = fresh_segment_map.get(segment_id, {})
                         first_shot = seg.get('shots', [])[0] if seg.get('shots') else {}
                         plot = first_shot.get('content', '')
@@ -693,12 +702,6 @@ class ReferenceGeneratorAgent(AgentInterface):
                                 ff_prompt = plot[:200]
 
                         logger.info(f"[{segment_id}] first-frame prompt: {ff_prompt}...")
-                        self._report_progress("参考图", f"正在生成: {segment_id}", 5, data={
-                            "asset_complete": {
-                                "type": "scenes", "id": segment_id,
-                                "status": "running"
-                            }
-                        })
 
                         refs = self._collect_refs(seg, asset_map, char_id_map, setting_id_map)
                         char_desc, set_desc = self._get_descriptions(
